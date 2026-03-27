@@ -7,6 +7,7 @@ import {
   getDefaultTeam,
   getStateEmoji,
   loadCurrentIterationByTeam,
+  resolveIdArg,
   runJson,
   terminalLink,
   tryGetAzureContext,
@@ -47,10 +48,11 @@ const listCommand = defineCommand({
       description: "Print machine-readable JSON",
     }),
   },
-  handler: async ({ flags }) => {
+  handler: async ({ flags, positional }) => {
     try {
-      if (flags.parent) {
-        await listByParent(flags.parent, flags.all, flags.top, flags.json);
+      const parentId = resolveIdArg(flags.parent, positional);
+      if (parentId) {
+        await listByParent(parentId, flags.all, flags.top, flags.json);
         return;
       }
 

@@ -6,6 +6,7 @@ import {
   extractParentId,
   formatRelativeTime,
   getStateEmoji,
+  resolveIdArg,
   runJson,
   terminalLink,
   tryGetAzureContext,
@@ -45,11 +46,7 @@ const showCommand = defineCommand({
   },
   handler: async ({ flags, positional, prompt }) => {
     try {
-      let id = flags.id;
-      if (!id && positional.length > 0) {
-        const parsed = Number.parseInt(positional[0], 10);
-        id = Number.isFinite(parsed) ? parsed : undefined;
-      }
+      let id = resolveIdArg(flags.id, positional);
 
       if (!id) {
         const raw = (
@@ -67,7 +64,7 @@ const showCommand = defineCommand({
       }
 
       if (!id || !Number.isFinite(id) || id <= 0) {
-        throw new Error("Missing task ID. Usage: task show --id <number>");
+        throw new Error("Missing task ID. Usage: task show [id]");
       }
 
       const chain = flags.parents ? await loadParentChain(id) : [await loadWorkItem(id)];

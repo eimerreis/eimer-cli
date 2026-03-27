@@ -263,6 +263,24 @@ function extractParentId(relations?: WorkItemRelation[]): number | null {
   return Number.isFinite(id) ? id : null;
 }
 
+function resolveIdArg(flag: number | undefined, positional: string[]): number | undefined {
+  if (flag) {
+    return flag;
+  }
+
+  const raw = positional[0]?.trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  return undefined;
+}
+
 export {
   DEFAULT_AREA_PATH,
   DEFAULT_TEAM,
@@ -276,6 +294,7 @@ export {
   loadCurrentIterationByTeam,
   runJson,
   runText,
+  resolveIdArg,
   terminalLink,
   tryGetAzureContext,
 };

@@ -1,6 +1,6 @@
 import { defineCommand, option } from "@bunli/core";
 import { z } from "zod";
-import { buildWorkItemUrl, getStateEmoji, runJson, terminalLink, tryGetAzureContext } from "./utils";
+import { buildWorkItemUrl, getStateEmoji, resolveIdArg, runJson, terminalLink, tryGetAzureContext } from "./utils";
 
 type UpdatedWorkItem = {
   id: number;
@@ -29,11 +29,7 @@ const closeCommand = defineCommand({
   },
   handler: async ({ flags, positional, prompt }) => {
     try {
-      let id = flags.id;
-      if (!id && positional.length > 0) {
-        const parsed = Number.parseInt(positional[0], 10);
-        id = Number.isFinite(parsed) ? parsed : undefined;
-      }
+      let id = resolveIdArg(flags.id, positional);
 
       if (!id) {
         const raw = (
@@ -51,7 +47,7 @@ const closeCommand = defineCommand({
       }
 
       if (!id || !Number.isFinite(id) || id <= 0) {
-        throw new Error("Missing task ID. Usage: task close --id <number>");
+        throw new Error("Missing task ID. Usage: task close [id]");
       }
 
       const command = [
