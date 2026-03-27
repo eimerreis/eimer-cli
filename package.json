@@ -1,0 +1,29 @@
+{
+  "name": "scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "config:typecheck": "npm --workspace @scripts/config run typecheck",
+    "eimer:dev": "npm --workspace @scripts/eimer run dev",
+    "eimer:typecheck": "npm --workspace @scripts/eimer run typecheck",
+    "eimer:build": "npm --workspace @scripts/eimer run build",
+    "pr:dev": "npm --workspace @scripts/pr run dev",
+    "pr:typecheck": "npm --workspace @scripts/pr run typecheck",
+    "pr:build": "npm --workspace @scripts/pr run build",
+    "release:dev": "npm --workspace @scripts/release run dev",
+    "release:typecheck": "npm --workspace @scripts/release run typecheck",
+    "release:build": "npm --workspace @scripts/release run build",
+    "pipeline:dev": "npm --workspace @scripts/pipeline run dev",
+    "pipeline:typecheck": "npm --workspace @scripts/pipeline run typecheck",
+    "pipeline:build": "npm --workspace @scripts/pipeline run build",
+    "task:dev": "npm --workspace @scripts/task run dev",
+    "task:typecheck": "npm --workspace @scripts/task run typecheck",
+    "task:build": "npm --workspace @scripts/task run build",
+    "helpers:collect-music": "npm --workspace @scripts/helpers run collect-music",
+    "helpers:tag-music": "npm --workspace @scripts/helpers run tag-music"
+  }
+}

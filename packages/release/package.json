@@ -1,0 +1,36 @@
+{
+  "name": "@scripts/release",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A CLI for release workflows",
+  "author": "",
+  "exports": {
+    ".": "./src/index.ts",
+    "./commands": "./src/commands/index.ts"
+  },
+  "bin": {
+    "release": "./dist/index.js"
+  },
+  "scripts": {
+    "postinstall": "bunli generate",
+    "dev": "bun run src/index.ts",
+    "build": "bunli build --native --outfile ../../bin/release",
+    "build:publish": "bun build src/index.ts --outdir dist --target bun",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bunli/core": "latest",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bunli/test": "latest",
+    "@types/bun": "latest",
+    "bunli": "latest",
+    "typescript": "^5.0.0"
+  },
+  "bunli": {
+    "entry": "./src/index.ts",
+    "outDir": "./dist"
+  }
+}

@@ -1,0 +1,143 @@
+trigger:
+  branches:
+    exclude:
+      - "*"
+  tags:
+    include:
+      - release/v*
+
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  releasePackageName: "@tapio/release"
+  npmScope: "@tapio"
+  npmFeedRegistry: "https://pkgs.dev.azure.com/<org>/<project>/_packaging/<feed>/npm/registry/"
+
+steps:
+  - checkout: self
+    fetchDepth: 0
+
+  - task: Bash@3
+    displayName: Install Bun
+    inputs:
+      targetType: inline
+      script: |
+        set -euo pipefail
+        curl -fsSL https://bun.sh/install | bash
+        echo "##vso[task.prependpath]$HOME/.bun/bin"
+
+  - task: Bash@3
+    displayName: Install dependencies
+    inputs:
+      targetType: inline
+      script: |
+        set -euo pipefail
+        bun install --frozen-lockfile
+
+  - task: Bash@3
+    displayName: Build publish bundle
+    inputs:
+      targetType: inline
+      script: |
+        set -euo pipefail
+        bun run --filter '@scripts/release' build:publish
+
+  - task: Bash@3
+    displayName: Prepare publish package
+    env:
+      BUILD_SOURCEBRANCH: $(Build.SourceBranch)
+      RELEASE_PACKAGE_NAME: $(releasePackageName)
+    inputs:
+      targetType: inline
+      script: |
+        set -euo pipefail
+
+        TAG_REF="${BUILD_SOURCEBRANCH:-}"
+        TAG_NAME="${TAG_REF#refs/tags/}"
+        VERSION="${TAG_NAME#release/v}"
+
+        if [ "$TAG_NAME" = "$TAG_REF" ] || [ "$VERSION" = "$TAG_NAME" ]; then
+          echo "Expected Build.SourceBranch to be refs/tags/release/v<version>, got: $TAG_REF"
+          exit 1
+        fi
+
+        if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
+          echo "Invalid release version extracted from tag '$TAG_NAME': $VERSION"
+          exit 1
+        fi
+
+        rm -rf publish
+        mkdir -p publish
+        cp -R packages/release/dist publish/dist
+        cp packages/release/README.md publish/README.md
+
+        VERSION="$VERSION" RELEASE_PACKAGE_NAME="$RELEASE_PACKAGE_NAME" bun --eval '
+          const sourcePath = "packages/release/package.json";
+          const outPath = "publish/package.json";
+          const source = JSON.parse(await Bun.file(sourcePath).text());
+          const releasePackageName = process.env.RELEASE_PACKAGE_NAME;
+          const version = process.env.VERSION;
+          if (!releasePackageName || !version) {
+            throw new Error("RELEASE_PACKAGE_NAME and VERSION must be set.");
+          }
+          const next = {
+            name: releasePackageName,
+            version,
+            type: source.type,
+            description: source.description,
+            author: source.author,
+            license: source.license,
+            repository: source.repository,
+            homepage: source.homepage,
+            bugs: source.bugs,
+            keywords: source.keywords,
+            bin: source.bin,
+            files: ["dist", "README.md"],
+          };
+          const compact = Object.fromEntries(Object.entries(next).filter(([, value]) => value !== undefined));
+          await Bun.write(outPath, `${JSON.stringify(compact, null, 2)}\n`);
+        '
+
+  - task: Bash@3
+    displayName: Configure npm authentication
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      NPM_FEED_REGISTRY: $(npmFeedRegistry)
+      NPM_SCOPE: $(npmScope)
+    inputs:
+      targetType: inline
+      script: |
+        set -euo pipefail
+
+        if [ -z "${SYSTEM_ACCESSTOKEN:-}" ]; then
+          echo "System.AccessToken is empty. Enable 'Allow scripts to access the OAuth token'."
+          exit 1
+        fi
+
+        if [ -z "${NPM_FEED_REGISTRY:-}" ] || [ -z "${NPM_SCOPE:-}" ]; then
+          echo "npmFeedRegistry and npmScope pipeline variables must be configured."
+          exit 1
+        fi
+
+        REGISTRY_HOST="${NPM_FEED_REGISTRY#https://}"
+        REGISTRY_HOST="${REGISTRY_HOST%/}"
+
+        cat > publish/.npmrc <<EOF
+        ${NPM_SCOPE}:registry=${NPM_FEED_REGISTRY}
+        always-auth=true
+        //${REGISTRY_HOST}/:_authToken=${SYSTEM_ACCESSTOKEN}
+        EOF
+
+  - task: Bash@3
+    displayName: Publish package
+    env:
+      NPM_FEED_REGISTRY: $(npmFeedRegistry)
+    inputs:
+      targetType: inline
+      script: |
+        set -euo pipefail
+        cd publish
+        bun publish --registry "$NPM_FEED_REGISTRY"

@@ -1,0 +1,14 @@
+title = "Eimer public repo gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Allow documented placeholder auth tokens and example URLs"
+regexTarget = "line"
+regexes = [
+  '''\$\{SYSTEM_ACCESSTOKEN\}''',
+  '''_authToken=<PAT>''',
+  '''https://\.\.\.''',
+  '''https://dev\.azure\.com/<org>''',
+]

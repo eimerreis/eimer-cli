@@ -1,0 +1,19 @@
+{
+  "name": "@scripts/helpers",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tag-music": "onetagger-cli autotagger --config ./src/tag-music/config.json --path /Volumes/music/library/",
+    "collect-music": "tsx ./src/collect-music.ts"
+  },
+  "dependencies": {
+    "cmd-ts": "^0.14.3",
+    "execa": "^9.6.0",
+    "glob": "^13.0.0",
+    "tsx": "^4.20.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1"
+  }
+}
