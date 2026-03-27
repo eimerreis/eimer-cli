@@ -193,6 +193,32 @@ function normalizeText(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function resolveIdArg(flag: number | undefined, positional: string[]): number | undefined {
+  if (flag) {
+    return flag;
+  }
+
+  const raw = positional[0]?.trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  return undefined;
+}
+
+function resolveStringArg(flag: string | undefined, positional: string[]): string {
+  if (flag?.trim()) {
+    return flag.trim();
+  }
+
+  return positional.join(" ").trim();
+}
+
 export {
   buildRunUrl,
   ensureRunBelongsToPipeline,
@@ -200,6 +226,8 @@ export {
   loadPipelineRuns,
   loadRunById,
   normalizeText,
+  resolveIdArg,
+  resolveStringArg,
   resolvePipelineByName,
   runJson,
   runText,

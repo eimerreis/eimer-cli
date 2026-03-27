@@ -10,6 +10,7 @@ import {
   buildRunUrl,
   getAzureContext,
   normalizeText,
+  resolveStringArg,
   resolvePipelineByName,
   runJson,
   type CommitInfo,
@@ -57,7 +58,7 @@ const changelogCommand = defineCommand({
       description: "Print machine-readable JSON",
     }),
   },
-  handler: async ({ flags, prompt }) => {
+  handler: async ({ flags, positional, prompt }) => {
     try {
       const config = await loadConfig();
       const context = await getAzureContext();
@@ -65,7 +66,7 @@ const changelogCommand = defineCommand({
       const defaultPipeline = (config.release?.defaultPipeline || "").trim();
       const mergedAreaConfigs = mergeAreaConfigs(config.areas);
 
-      let pipelineName = (flags.pipeline || "").trim();
+      let pipelineName = resolveStringArg(flags.pipeline, positional);
       if (!pipelineName) {
         pipelineName = (
           await prompt.text("Pipeline name", {
@@ -77,7 +78,7 @@ const changelogCommand = defineCommand({
       }
 
       if (!pipelineName) {
-        throw new Error("Missing pipeline name. Pass --pipeline.");
+        throw new Error("Missing pipeline name. Usage: release changelog [pipeline]");
       }
 
       const pipeline = await resolvePipelineByName(pipelineName);

@@ -4,6 +4,7 @@ import {
   buildRunUrl,
   getAzureContext,
   normalizeText,
+  resolveIdArg,
 } from "./utils";
 import { approveApprovals, loadPendingApprovals, type Approval } from "./approvals";
 
@@ -36,8 +37,9 @@ const approveCommand = defineCommand({
       description: "Print machine-readable JSON",
     }),
   },
-  handler: async ({ flags, prompt }) => {
+  handler: async ({ flags, positional, prompt }) => {
     try {
+      const runId = resolveIdArg(flags.run, positional);
       const context = await getAzureContext();
       const pending = await loadPendingApprovals(context);
 
@@ -51,7 +53,7 @@ const approveCommand = defineCommand({
           return false;
         }
 
-        if (flags.run && approval.pipeline?.owner?.id !== flags.run) {
+        if (runId && approval.pipeline?.owner?.id !== runId) {
           return false;
         }
 
