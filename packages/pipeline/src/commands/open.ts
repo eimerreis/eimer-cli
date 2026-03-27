@@ -1,6 +1,6 @@
 import { defineCommand, option } from "@bunli/core";
 import { z } from "zod";
-import { getRepoInfo, runJson, runMatchesRepo, runText, type PipelineRun } from "./utils";
+import { getRepoInfo, resolveIdArg, runJson, runMatchesRepo, runText, type PipelineRun } from "./utils";
 
 const openCommand = defineCommand({
   name: "open",
@@ -17,11 +17,7 @@ const openCommand = defineCommand({
   },
   handler: async ({ flags, positional }) => {
     try {
-      let runId = flags.id;
-      if (!runId && positional.length > 0) {
-        const parsed = Number.parseInt(positional[0], 10);
-        runId = Number.isFinite(parsed) ? parsed : undefined;
-      }
+      let runId = resolveIdArg(flags.id, positional);
 
       if (!runId) {
         const repoInfo = await getRepoInfo();

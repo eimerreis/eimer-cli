@@ -6,6 +6,7 @@ import {
   calculateDuration,
   formatRelativeTime,
   getRunIndicator,
+  resolveIdArg,
   runJson,
   stripBranchPrefix,
   terminalLink,
@@ -27,11 +28,7 @@ const showCommand = defineCommand({
   },
   handler: async ({ flags, positional, prompt }) => {
     try {
-      let runId = flags.id;
-      if (!runId && positional.length > 0) {
-        const parsed = Number.parseInt(positional[0], 10);
-        runId = Number.isFinite(parsed) ? parsed : undefined;
-      }
+      let runId = resolveIdArg(flags.id, positional);
 
       if (!runId) {
         const raw = (
@@ -48,7 +45,7 @@ const showCommand = defineCommand({
       }
 
       if (!runId || !Number.isFinite(runId) || runId <= 0) {
-        throw new Error("Missing run ID. Usage: pipeline show --id <number>");
+        throw new Error("Missing run ID. Usage: pipeline show [id]");
       }
 
       const run = await runJson<PipelineRun>([

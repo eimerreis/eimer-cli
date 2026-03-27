@@ -283,6 +283,32 @@ function parseKeyValuePairs(values: string[]): string[] {
     .filter((item) => item.includes("="));
 }
 
+function resolveIdArg(flag: number | undefined, positional: string[]): number | undefined {
+  if (flag) {
+    return flag;
+  }
+
+  const raw = positional[0]?.trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  return undefined;
+}
+
+function resolveStringArg(flag: string | undefined, positional: string[]): string {
+  if (flag?.trim()) {
+    return flag.trim();
+  }
+
+  return positional.join(" ").trim();
+}
+
 export {
   buildRunMessage,
   buildRunUrl,
@@ -294,6 +320,8 @@ export {
   runJson,
   runMatchesRepo,
   runText,
+  resolveIdArg,
+  resolveStringArg,
   stripBranchPrefix,
   terminalLink,
 };

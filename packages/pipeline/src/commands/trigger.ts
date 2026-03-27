@@ -5,6 +5,7 @@ import {
   getRepoInfo,
   getRunIndicator,
   parseKeyValuePairs,
+  resolveStringArg,
   runJson,
   terminalLink,
   type PipelineDefinition,
@@ -40,12 +41,13 @@ const triggerCommand = defineCommand({
       description: "Print machine-readable JSON",
     }),
   },
-  handler: async ({ flags, prompt }) => {
+  handler: async ({ flags, positional, prompt }) => {
     try {
       const repoInfo = await getRepoInfo();
+      const pipelineName = resolveStringArg(flags.name, positional);
       const pipeline = await resolvePipeline(
         flags.id,
-        flags.name,
+        pipelineName,
         repoInfo.repositoryFilter,
         repoInfo.repositoryType,
         prompt,

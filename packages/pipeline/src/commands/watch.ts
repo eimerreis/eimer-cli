@@ -5,6 +5,7 @@ import {
   calculateDuration,
   getRepoInfo,
   getRunIndicator,
+  resolveIdArg,
   runJson,
   runMatchesRepo,
   type PipelineRun,
@@ -29,18 +30,14 @@ const watchCommand = defineCommand({
   },
   handler: async ({ flags, positional }) => {
     try {
-      let runId = flags.id;
-      if (!runId && positional.length > 0) {
-        const parsed = Number.parseInt(positional[0], 10);
-        runId = Number.isFinite(parsed) ? parsed : undefined;
-      }
+      let runId = resolveIdArg(flags.id, positional);
 
       if (!runId) {
         runId = await resolveLatestRepoRunId();
       }
 
       if (!runId) {
-        throw new Error("Missing run ID. Usage: pipeline watch --id <number>");
+        throw new Error("Missing run ID. Usage: pipeline watch [id]");
       }
 
       let lastPrintedStatus = "";
