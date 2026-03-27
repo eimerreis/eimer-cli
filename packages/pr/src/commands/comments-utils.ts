@@ -138,6 +138,24 @@ function normalizeNewlines(value: string): string {
   return value.replace(/\r\n/g, "\n").trim();
 }
 
+function resolveIdArg(flag: number | undefined, positional: string[]): number | undefined {
+  if (flag) {
+    return flag;
+  }
+
+  const raw = positional[0]?.trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  return undefined;
+}
+
 function printHumanReadable(result: NormalizedResult): void {
   console.log(
     `PR #${result.pr.id}: ${JSON.stringify(result.pr.title)} (${result.platform})${
@@ -206,6 +224,7 @@ export {
   detectPlatform,
   mapAzureStatus,
   printHumanReadable,
+  resolveIdArg,
   runJson,
   runText,
 };

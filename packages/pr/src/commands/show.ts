@@ -2,7 +2,7 @@ import { defineCommand, option } from "@bunli/core";
 import { z } from "zod";
 import { findAzurePrByBranch, findAzurePrById, loadAzureComments } from "./comments-azdo";
 import { findGitHubPrByBranch, findGitHubPrById, loadGitHubComments, parseGitHubRepo } from "./comments-github";
-import { detectPlatform, runJson, runText, type AzurePullRequest, type GitHubRepo } from "./comments-utils";
+import { detectPlatform, resolveIdArg, runJson, runText, type AzurePullRequest, type GitHubRepo } from "./comments-utils";
 import {
   buildAzurePrUrl,
   collectAzureNotReadyReasons,
@@ -42,17 +42,18 @@ const showCommand = defineCommand({
       description: "Print machine-readable JSON",
     }),
   },
-  handler: async ({ flags, prompt }) => {
+  handler: async ({ flags, positional, prompt }) => {
     try {
       const remoteUrl = (await runText(["git", "remote", "get-url", "origin"])).trim();
       const platform = detectPlatform(remoteUrl);
+      const prId = resolveIdArg(flags.id, positional);
       let branch = flags.branch?.trim() || "";
 
-      if (!branch && !flags.id) {
+      if (!branch && !prId) {
         branch = (await runText(["git", "branch", "--show-current"])).trim();
       }
 
-      if (!branch && !flags.id) {
+      if (!branch && !prId) {
         branch = (
           await prompt.text("Branch name", {
             placeholder: "feature/my-branch",
@@ -62,15 +63,15 @@ const showCommand = defineCommand({
         ).trim();
 
         if (!branch) {
-          console.error("Could not determine branch. Pass --branch or --id.");
+          console.error("Could not determine branch. Pass [id], --branch, or --id.");
           process.exit(1);
         }
       }
 
       const result =
         platform === "github"
-          ? await showGitHubPr(remoteUrl, branch, flags.id, flags.repo)
-          : await showAzurePr(remoteUrl, branch, flags.id, flags.repo);
+          ? await showGitHubPr(remoteUrl, branch, prId, flags.repo)
+          : await showAzurePr(remoteUrl, branch, prId, flags.repo);
 
       if (!result) {
         console.log(`No pull request found for branch '${branch}'.`);

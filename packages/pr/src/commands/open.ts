@@ -1,7 +1,7 @@
 import { defineCommand, option } from "@bunli/core";
 import { findAzurePrByBranch, findAzurePrById } from "./comments-azdo";
 import { findGitHubPrByBranch, findGitHubPrById, parseGitHubRepo } from "./comments-github";
-import { detectPlatform, runText } from "./comments-utils";
+import { detectPlatform, resolveIdArg, runText } from "./comments-utils";
 import { z } from "zod";
 
 const openCommand = defineCommand({
@@ -21,17 +21,18 @@ const openCommand = defineCommand({
       description: "Repo override (GitHub: owner/repo, AzDO: repo name)",
     }),
   },
-  handler: async ({ flags, prompt }) => {
+  handler: async ({ flags, positional, prompt }) => {
     try {
       const remoteUrl = (await runText(["git", "remote", "get-url", "origin"])).trim();
       const platform = detectPlatform(remoteUrl);
+      const prId = resolveIdArg(flags.id, positional);
       let branch = flags.branch?.trim() || "";
 
-      if (!branch && !flags.id) {
+      if (!branch && !prId) {
         branch = (await runText(["git", "branch", "--show-current"])).trim();
       }
 
-      if (!branch && !flags.id) {
+      if (!branch && !prId) {
         branch = (await prompt.text("Branch name", {
           placeholder: "feature/my-branch",
           fallbackValue: "",
@@ -39,17 +40,17 @@ const openCommand = defineCommand({
         })).trim();
 
         if (!branch) {
-          console.error("Could not determine branch. Pass --branch or --id.");
+          console.error("Could not determine branch. Pass [id], --branch, or --id.");
           process.exit(1);
         }
       }
 
       if (platform === "github") {
-        await openGitHubPr(remoteUrl, branch, flags.id, flags.repo);
+        await openGitHubPr(remoteUrl, branch, prId, flags.repo);
         return;
       }
 
-      await openAzurePr(branch, flags.id, flags.repo);
+      await openAzurePr(branch, prId, flags.repo);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Failed to open PR: ${message}`);

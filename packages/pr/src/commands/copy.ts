@@ -2,7 +2,7 @@ import { defineCommand, option } from "@bunli/core";
 import { z } from "zod";
 import { findAzurePrByBranch, findAzurePrById } from "./comments-azdo";
 import { findGitHubPrByBranch, findGitHubPrById, parseGitHubRepo } from "./comments-github";
-import { detectPlatform, runText } from "./comments-utils";
+import { detectPlatform, resolveIdArg, runText } from "./comments-utils";
 
 type CopyTarget = {
   id: number;
@@ -32,17 +32,18 @@ const copyCommand = defineCommand({
       description: "Print machine-readable JSON",
     }),
   },
-  handler: async ({ flags, prompt }) => {
+  handler: async ({ flags, positional, prompt }) => {
     try {
       const remoteUrl = (await runText(["git", "remote", "get-url", "origin"])).trim();
       const platform = detectPlatform(remoteUrl);
+      const prId = resolveIdArg(flags.id, positional);
       let branch = flags.branch?.trim() || "";
 
-      if (!branch && !flags.id) {
+      if (!branch && !prId) {
         branch = (await runText(["git", "branch", "--show-current"])).trim();
       }
 
-      if (!branch && !flags.id) {
+      if (!branch && !prId) {
         branch = (
           await prompt.text("Branch name", {
             placeholder: "feature/my-branch",
@@ -52,17 +53,17 @@ const copyCommand = defineCommand({
         ).trim();
 
         if (!branch) {
-          throw new Error("Could not determine branch. Pass --branch or --id.");
+          throw new Error("Could not determine branch. Pass [id], --branch, or --id.");
         }
       }
 
       const target =
         platform === "github"
-          ? await resolveGitHubTarget(remoteUrl, branch, flags.id, flags.repo)
-          : await resolveAzureTarget(remoteUrl, branch, flags.id, flags.repo);
+          ? await resolveGitHubTarget(remoteUrl, branch, prId, flags.repo)
+          : await resolveAzureTarget(remoteUrl, branch, prId, flags.repo);
 
       if (!target) {
-        const lookup = flags.id ? `ID '${flags.id}'` : `branch '${branch}'`;
+        const lookup = prId ? `ID '${prId}'` : `branch '${branch}'`;
         console.log(`No pull request found for ${lookup}.`);
         return;
       }

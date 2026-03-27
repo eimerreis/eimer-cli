@@ -2,7 +2,7 @@ import { defineCommand, option } from "@bunli/core";
 import { z } from "zod";
 import { loadAzureComments } from "./comments-azdo";
 import { loadGitHubComments } from "./comments-github";
-import { detectPlatform, printHumanReadable, runText } from "./comments-utils";
+import { detectPlatform, printHumanReadable, resolveIdArg, runText } from "./comments-utils";
 
 const commentsCommand = defineCommand({
   name: "comments",
@@ -25,17 +25,18 @@ const commentsCommand = defineCommand({
       description: "Repo override (GitHub: owner/repo, AzDO: repo name)",
     }),
   },
-  handler: async ({ flags, prompt }) => {
+  handler: async ({ flags, positional, prompt }) => {
     try {
       const remoteUrl = (await runText(["git", "remote", "get-url", "origin"])).trim();
       const platform = detectPlatform(remoteUrl);
+      const prId = resolveIdArg(flags.id, positional);
       let branch = flags.branch?.trim() || "";
 
-      if (!branch && !flags.id) {
+      if (!branch && !prId) {
         branch = (await runText(["git", "branch", "--show-current"])).trim();
       }
 
-      if (!branch && !flags.id) {
+      if (!branch && !prId) {
         branch = (await prompt.text("Branch name", {
           placeholder: "feature/my-branch",
           fallbackValue: "",
@@ -43,15 +44,15 @@ const commentsCommand = defineCommand({
         })).trim();
 
         if (!branch) {
-          console.error("Could not determine branch. Pass --branch or --id.");
+          console.error("Could not determine branch. Pass [id], --branch, or --id.");
           process.exit(1);
         }
       }
 
       const result =
         platform === "github"
-          ? await loadGitHubComments(remoteUrl, branch, flags.id, flags.repo)
-          : await loadAzureComments(branch, flags.id, flags.repo);
+          ? await loadGitHubComments(remoteUrl, branch, prId, flags.repo)
+          : await loadAzureComments(branch, prId, flags.repo);
 
       if (flags.json) {
         console.log(JSON.stringify(result, null, 2));
