@@ -230,7 +230,7 @@ jobs:
         run: |
           set -euo pipefail
           cd publish
-          bun publish --registry "$NPM_FEED_REGISTRY"
+          npm publish --registry "$NPM_FEED_REGISTRY"
 
       - name: Push release commit and tag
         if: steps.version.outputs.changed == 'true'
