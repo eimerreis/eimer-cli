@@ -2,28 +2,10 @@
 
 CLI for Azure DevOps release workflows.
 
-## Company distribution
-
-This package is built from this repo and published in CI to Azure Artifacts as `@tapio/release`.
-
-Install prerequisites:
-
-```bash
-curl -fsSL https://bun.sh/install | bash
-az login
-az devops configure -d organization=https://dev.azure.com/<org> project=<project>
-```
-
-Run directly without cloning:
-
-```bash
-bunx @tapio/release changelog --pipeline "MyPipeline"
-bunx @tapio/release approve
-```
 
 ## Configuration
 
-Path: `~/.config/tapio-release/config.json`
+Path: `~/.config/scripts-release/config.json`
 
 ```json
 {
