@@ -71,7 +71,6 @@ The command shows the changelog before posting, lets you edit it in your editor,
 - GitHub Actions workflow: `.github/workflows/publish-release.yml`
 - Trigger: pushes to `main` with pending `.changeset/*.md` files
 - Create release intent: `bunx changeset`
-- Package rewrite in CI: `@scripts/release` -> `@tapio/release`, version from Changesets
 - Release outputs: version commit, `release/v<version>` tag, Azure Artifacts publish, GitHub release
 - GitHub environment: `tapioone-azdevops` (`AZDEVOPS_ORGANIZATION`, `AZDEVOPS_PROJECT`, `AZDEVOPS_PACKAGEFEED`, plus publish token like `AZDEVOPS_PAT`)
 - Registry auth template: `docs/npmrc.azure-artifacts.template`
