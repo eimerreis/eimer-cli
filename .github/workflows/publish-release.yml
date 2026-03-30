@@ -103,7 +103,7 @@ jobs:
 
       - name: Build publish bundle
         if: steps.version.outputs.changed == 'true'
-        run: bun run --filter '@scripts/release' build:publish
+        run: bun build packages/release/src/index.ts --outdir packages/release/dist --target bun
 
       - name: Prepare publish package
         if: steps.version.outputs.changed == 'true'
