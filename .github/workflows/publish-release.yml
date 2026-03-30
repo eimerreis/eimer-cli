@@ -172,6 +172,7 @@ jobs:
 
           echo "NPM_FEED_REGISTRY=${NPM_FEED_REGISTRY}" >> "$GITHUB_ENV"
           echo "NPM_PASSWORD=${TOKEN}" >> "$GITHUB_ENV"
+          echo "NPM_CONFIG_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
 
           cat > publish/.npmrc <<EOF
           ${NPM_SCOPE}:registry=${NPM_FEED_REGISTRY}
@@ -182,13 +183,6 @@ jobs:
           //${FEED_PATH}/:username=github
           //${FEED_PATH}/:_password=\${NPM_PASSWORD}
           //${FEED_PATH}/:email=github-actions@users.noreply.github.com
-          EOF
-
-          cat > publish/bunfig.toml <<EOF
-          [install.registry]
-          url = "${NPM_FEED_REGISTRY}"
-          username = "github"
-          password = "\$NPM_PASSWORD"
           EOF
 
       - name: Extract release notes
@@ -236,7 +230,7 @@ jobs:
         run: |
           set -euo pipefail
           cd publish
-          bun publish --registry "$NPM_FEED_REGISTRY" --config=bunfig.toml
+          bun publish --registry "$NPM_FEED_REGISTRY"
 
       - name: Push release commit and tag
         if: steps.version.outputs.changed == 'true'
