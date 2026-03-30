@@ -133,6 +133,18 @@ jobs:
             if (!releasePackageName || !version) {
               throw new Error("RELEASE_PACKAGE_NAME and VERSION must be set.");
             }
+            const runtimeDependencies = {
+              "@opentui/core": "0.1.90",
+              "ws": "8.20.0"
+            };
+            const runtimeOptionalDependencies = {
+              "@opentui/core-darwin-arm64": "0.1.90",
+              "@opentui/core-darwin-x64": "0.1.90",
+              "@opentui/core-linux-arm64": "0.1.90",
+              "@opentui/core-linux-x64": "0.1.90",
+              "@opentui/core-win32-arm64": "0.1.90",
+              "@opentui/core-win32-x64": "0.1.90"
+            };
             const next = {
               name: releasePackageName,
               version,
@@ -145,6 +157,8 @@ jobs:
               bugs: source.bugs,
               keywords: source.keywords,
               bin: source.bin,
+              dependencies: runtimeDependencies,
+              optionalDependencies: runtimeOptionalDependencies,
               files: ["dist", "README.md", "CHANGELOG.md"],
             };
             const compact = Object.fromEntries(Object.entries(next).filter(([, value]) => value !== undefined));
