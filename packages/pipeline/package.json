@@ -1,6 +1,7 @@
 {
   "name": "@scripts/pipeline",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "A CLI for Azure DevOps pipeline workflows",
   "author": "",

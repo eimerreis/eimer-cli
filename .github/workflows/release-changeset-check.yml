@@ -1,0 +1,52 @@
+name: Release Changeset Check
+
+on:
+  pull_request:
+
+jobs:
+  require-changeset:
+    name: Require changeset for release changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for release package changes
+        id: release_changes
+        run: |
+          set -euo pipefail
+
+          git fetch --no-tags origin "${{ github.base_ref }}"
+
+          if git diff --quiet "origin/${{ github.base_ref }}...HEAD" -- packages/release; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Check for new changeset files
+        if: steps.release_changes.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          git fetch --no-tags origin "${{ github.base_ref }}"
+
+          found=false
+
+          while IFS=$'\t' read -r status path; do
+            if [ -n "$path" ] && [ "$path" != ".changeset/README.md" ] && [[ "$path" == .changeset/*.md ]]; then
+              found=true
+              break
+            fi
+          done < <(git diff --name-status "origin/${{ github.base_ref }}...HEAD" -- .changeset)
+
+          if [ "$found" = true ]; then
+            exit 0
+          fi
+
+          echo "Release package changes detected in packages/release, but no changeset markdown file was added." >&2
+          echo "Run 'bunx changeset' (or 'bunx changeset add --empty' if no release is needed) and commit the resulting file." >&2
+          exit 1

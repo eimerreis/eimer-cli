@@ -1,6 +1,7 @@
 {
   "name": "@scripts/task",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "A CLI for Azure DevOps task workflows",
   "author": "",
@@ -20,7 +21,7 @@
   },
   "dependencies": {
     "@bunli/core": "latest",
-    "@scripts/config": "0.1.0",
+    "@scripts/config": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

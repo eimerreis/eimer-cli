@@ -1,6 +1,7 @@
 {
   "name": "@scripts/pr",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "A CLI built with Bunli",
   "author": "",

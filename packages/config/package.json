@@ -1,6 +1,7 @@
 {
   "name": "@scripts/config",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "Shared config helpers for scripts CLIs",
   "author": "",

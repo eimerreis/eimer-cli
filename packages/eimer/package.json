@@ -1,6 +1,7 @@
 {
   "name": "@scripts/eimer",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "Meta CLI for all scripts packages",
   "author": "",
@@ -16,11 +17,11 @@
   },
   "dependencies": {
     "@bunli/core": "latest",
-    "@scripts/config": "0.1.0",
-    "@scripts/pipeline": "0.1.0",
-    "@scripts/pr": "0.1.0",
-    "@scripts/release": "0.1.0",
-    "@scripts/task": "0.1.0",
+    "@scripts/config": "workspace:*",
+    "@scripts/pipeline": "workspace:*",
+    "@scripts/pr": "workspace:*",
+    "@scripts/release": "workspace:*",
+    "@scripts/task": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

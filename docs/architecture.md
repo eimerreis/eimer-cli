@@ -137,9 +137,12 @@ graph TB
 
 ### Azure Artifacts (company)
 - `@scripts/release` published as `@tapio/release` to Azure Artifacts
-- CI pipeline triggered on `release/v*` git tags
+- GitHub Actions workflow triggered by pushes to `main` with pending Changesets
+- Changesets bumps `packages/release/package.json`, writes changelog, commits release metadata, and tags `release/v<version>`
 - Build: `bun build --target bun` -> single bundled JS with all deps inlined
-- Publish: rewrite `package.json` (name -> `@tapio/release`, version from tag, strip deps) -> `npm publish`
+- Publish: rewrite `package.json` (name -> `@tapio/release`, version from Changesets, strip deps) -> `npm publish`
+- Registry settings from GitHub environment `tapioone-azdevops` secrets (`AZDEVOPS_ORGANIZATION`, `AZDEVOPS_PROJECT`, `AZDEVOPS_PACKAGEFEED`, auth token)
+- GitHub Release created from the package changelog entry for that version
 - Consumers: `bunx @tapio/release changelog --pipeline "..."`
 - See [feature spec](features/001-release-publish.md) for full details
 

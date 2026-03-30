@@ -36,13 +36,16 @@ Hardcoded area configs (frontend/backend/infra) remain as defaults. User-defined
 ### Build & Publish Strategy
 - **Build**: `bun build src/index.ts --outdir dist --target bun` - bundled entry point plus required runtime assets in `dist/`
 - **Bin entry**: `dist/index.js` with `#!/usr/bin/env bun` shebang
-- **CI rename**: Pipeline script rewrites `package.json`:
+- **CI rename**: Workflow script rewrites `package.json`:
   - `name`: `@scripts/release` -> `@tapio/release`
-  - `version`: extracted from git tag (`release/v1.2.3` -> `1.2.3`)
+  - `version`: taken from Changesets-updated `packages/release/package.json`
   - Strips `dependencies`, `devDependencies` (everything is bundled)
   - Strips workspace-specific fields (`workspaces`, `scripts.postinstall`)
-- **Publish trigger**: Git tag matching `release/v*`
-- **Registry**: Azure Artifacts feed via `.npmrc` in CI
+- **Publish trigger**: Push to `main` with pending `.changeset/*.md` files
+- **Versioning**: `bunx changeset version` updates package version + changelog, removes processed changesets, and release workflow commits the result
+- **Registry**: Azure Artifacts feed via `.npmrc` in GitHub Actions
+- **Registry config**: GitHub environment `tapioone-azdevops` secrets `AZDEVOPS_ORGANIZATION`, `AZDEVOPS_PROJECT`, `AZDEVOPS_PACKAGEFEED`, and a publish token (`AZDEVOPS_PAT` preferred)
+- **GitHub release**: Created from the matching `packages/release/CHANGELOG.md` entry and tagged as `release/v<version>`
 
 ### Dual Build Support
 - `build` (existing): `bunli build --native --outfile ../../bin/release` - personal native binary
@@ -52,7 +55,8 @@ Hardcoded area configs (frontend/backend/infra) remain as defaults. User-defined
 - [x] Inline config module - copy config loading into `src/config.ts`, own schema, path `~/.config/tapio-release/config.json`
 - [x] Make area configs configurable - load from config file, merge with hardcoded defaults in `areas.ts`
 - [x] Add `build:publish` script - Bun bundler targeting bun, bundled publish output in `dist/`
-- [x] Create publish pipeline - Azure DevOps YAML triggered on `release/v*` tag: install -> build:publish -> rewrite package.json -> bun publish
+- [x] Add Changesets CLI and config - release intent files under `.changeset/` and automated versioning on `main`
+- [x] Create publish pipeline - GitHub Actions workflow on `main`: changeset version -> commit + tag -> build:publish -> rewrite package.json -> bun publish -> GitHub release
 - [x] Add `.npmrc` template - document Azure Artifacts feed setup for consumers
 - [x] Write README - installation (Bun + az CLI), usage examples, config reference, CI integration
 - [ ] Test bunx flow end-to-end - verify from clean environment with only Bun + az CLI (blocked: requires Azure Artifacts feed credentials and published package)
@@ -69,5 +73,5 @@ Hardcoded area configs (frontend/backend/infra) remain as defaults. User-defined
 - [ ] Teams webhook posting works via `--post-webhook` flag or config file
 - [ ] Custom area definitions in `~/.config/tapio-release/config.json` are respected
 - [x] Existing `bunli build --native` still produces personal native binary
-- [ ] Git tag `release/v1.0.0` triggers CI and publishes to Azure Artifacts
+- [ ] Merging a changeset to `main` versions `@scripts/release`, publishes `@tapio/release`, and creates a GitHub release
 - [x] README documents installation, usage, and config file format

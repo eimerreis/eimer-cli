@@ -7,6 +7,9 @@
     "packages/*"
   ],
   "scripts": {
+    "changeset": "changeset",
+    "changeset:status": "changeset status",
+    "changeset:version": "changeset version",
     "config:typecheck": "npm --workspace @scripts/config run typecheck",
     "eimer:dev": "npm --workspace @scripts/eimer run dev",
     "eimer:typecheck": "npm --workspace @scripts/eimer run typecheck",
@@ -25,5 +28,8 @@
     "task:build": "npm --workspace @scripts/task run build",
     "helpers:collect-music": "npm --workspace @scripts/helpers run collect-music",
     "helpers:tag-music": "npm --workspace @scripts/helpers run tag-music"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.30.0"
   }
 }

@@ -4,5 +4,7 @@ always-auth=true
 ; For local dev with personal access token (Packaging Read scope):
 ; //pkgs.dev.azure.com/<org>/<project>/_packaging/<feed>/npm/registry/:_authToken=<PAT>
 
-; For CI with Azure DevOps OAuth token:
-; //pkgs.dev.azure.com/<org>/<project>/_packaging/<feed>/npm/registry/:_authToken=${SYSTEM_ACCESSTOKEN}
+; For GitHub Actions publish jobs with a PAT secret:
+; //pkgs.dev.azure.com/<org>/<project>/_packaging/<feed>/npm/registry/:username=github
+; //pkgs.dev.azure.com/<org>/<project>/_packaging/<feed>/npm/registry/:_password=<BASE64_PAT>
+; //pkgs.dev.azure.com/<org>/<project>/_packaging/<feed>/npm/registry/:email=github-actions@users.noreply.github.com

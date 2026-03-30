@@ -1,0 +1,249 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    name: Version and publish @tapio/release
+    runs-on: ubuntu-latest
+    environment: tapioone-azdevops
+    permissions:
+      contents: write
+    env:
+      RELEASE_PACKAGE_NAME: "@tapio/release"
+      NPM_SCOPE: "@tapio"
+      AZDEVOPS_ORGANIZATION: ${{ secrets.AZDEVOPS_ORGANIZATION }}
+      AZDEVOPS_PACKAGEFEED: ${{ secrets.AZDEVOPS_PACKAGEFEED }}
+      AZDEVOPS_PROJECT: ${{ secrets.AZDEVOPS_PROJECT }}
+      AZDEVOPS_PAT: ${{ secrets.AZDEVOPS_PAT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Detect pending changesets
+        id: changesets
+        run: |
+          set -euo pipefail
+
+          shopt -s nullglob
+          files=(.changeset/*.md)
+          pending=()
+          for file in "${files[@]}"; do
+            if [ "$(basename "$file")" != "README.md" ]; then
+              pending+=("$file")
+            fi
+          done
+
+          if [ ${#pending[@]} -eq 0 ]; then
+            echo "has_changesets=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          printf 'Pending changesets:\n%s\n' "${pending[@]}"
+          echo "has_changesets=true" >> "$GITHUB_OUTPUT"
+
+      - name: Read current release version
+        if: steps.changesets.outputs.has_changesets == 'true'
+        id: current
+        run: |
+          set -euo pipefail
+          VERSION="$(bun --eval 'const pkg = JSON.parse(await Bun.file("packages/release/package.json").text()); process.stdout.write(pkg.version);')"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure git author
+        if: steps.changesets.outputs.has_changesets == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Version release package
+        if: steps.changesets.outputs.has_changesets == 'true'
+        run: bunx changeset version
+
+      - name: Resolve release version
+        if: steps.changesets.outputs.has_changesets == 'true'
+        id: version
+        run: |
+          set -euo pipefail
+
+          PREVIOUS_VERSION="${{ steps.current.outputs.version }}"
+          VERSION="$(bun --eval 'const pkg = JSON.parse(await Bun.file("packages/release/package.json").text()); process.stdout.write(pkg.version);')"
+
+          if [ "$VERSION" = "$PREVIOUS_VERSION" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No @scripts/release version change detected."
+            exit 0
+          fi
+
+          TAG="release/v${VERSION}"
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build publish bundle
+        if: steps.version.outputs.changed == 'true'
+        run: bun run --filter '@scripts/release' build:publish
+
+      - name: Prepare publish package
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ steps.version.outputs.version }}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
+          rm -rf publish
+          mkdir -p publish
+          cp -R packages/release/dist publish/dist
+          cp packages/release/README.md publish/README.md
+          if [ -f packages/release/CHANGELOG.md ]; then
+            cp packages/release/CHANGELOG.md publish/CHANGELOG.md
+          fi
+
+          VERSION="$VERSION" RELEASE_PACKAGE_NAME="$RELEASE_PACKAGE_NAME" bun --eval '
+            const sourcePath = "packages/release/package.json";
+            const outPath = "publish/package.json";
+            const source = JSON.parse(await Bun.file(sourcePath).text());
+            const releasePackageName = process.env.RELEASE_PACKAGE_NAME;
+            const version = process.env.VERSION;
+            if (!releasePackageName || !version) {
+              throw new Error("RELEASE_PACKAGE_NAME and VERSION must be set.");
+            }
+            const next = {
+              name: releasePackageName,
+              version,
+              type: source.type,
+              description: source.description,
+              author: source.author,
+              license: source.license,
+              repository: source.repository,
+              homepage: source.homepage,
+              bugs: source.bugs,
+              keywords: source.keywords,
+              bin: source.bin,
+              files: ["dist", "README.md", "CHANGELOG.md"],
+            };
+            const compact = Object.fromEntries(Object.entries(next).filter(([, value]) => value !== undefined));
+            await Bun.write(outPath, `${JSON.stringify(compact, null, 2)}\n`);
+          '
+
+      - name: Configure npm authentication
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          if [ -z "${AZDEVOPS_ORGANIZATION:-}" ] || [ -z "${AZDEVOPS_PROJECT:-}" ] || [ -z "${AZDEVOPS_PACKAGEFEED:-}" ]; then
+            echo "Missing Azure DevOps registry settings. Set AZDEVOPS_ORGANIZATION, AZDEVOPS_PROJECT, and AZDEVOPS_PACKAGEFEED in the tapioone-azdevops environment."
+            exit 1
+          fi
+
+          TOKEN="${AZDEVOPS_PAT:-${AZURE_DEVOPS_EXT_PAT:-${AZDEVOPS_TOKEN:-${NPM_TOKEN:-}}}}"
+          if [ -z "$TOKEN" ]; then
+            echo "Missing publish token. Set AZDEVOPS_PAT, AZURE_DEVOPS_EXT_PAT, AZDEVOPS_TOKEN, or NPM_TOKEN in the tapioone-azdevops environment."
+            exit 1
+          fi
+
+          FEED_PATH="pkgs.dev.azure.com/${AZDEVOPS_ORGANIZATION}/${AZDEVOPS_PROJECT}/_packaging/${AZDEVOPS_PACKAGEFEED}/npm"
+          NPM_FEED_REGISTRY="https://${FEED_PATH}/registry/"
+          TOKEN_B64="$(printf '%s' "$TOKEN" | base64 | tr -d '\n')"
+
+          echo "NPM_FEED_REGISTRY=${NPM_FEED_REGISTRY}" >> "$GITHUB_ENV"
+
+          cat > publish/.npmrc <<EOF
+          ${NPM_SCOPE}:registry=${NPM_FEED_REGISTRY}
+          always-auth=true
+          //${FEED_PATH}/registry/:username=github
+          //${FEED_PATH}/registry/:_password=${TOKEN_B64}
+          //${FEED_PATH}/registry/:email=github-actions@users.noreply.github.com
+          //${FEED_PATH}/:username=github
+          //${FEED_PATH}/:_password=${TOKEN_B64}
+          //${FEED_PATH}/:email=github-actions@users.noreply.github.com
+          EOF
+
+      - name: Extract release notes
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}" bun --eval '
+            const version = process.env.VERSION;
+            if (!version) {
+              throw new Error("VERSION must be set.");
+            }
+            const changelog = await Bun.file("packages/release/CHANGELOG.md").text();
+            const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const match = changelog.match(new RegExp(`##\\s+${escaped}\\n([\\s\\S]*?)(?=\\n##\\s+|$)`));
+            if (!match) {
+              throw new Error(`Could not find changelog entry for ${version}.`);
+            }
+            await Bun.write("release-notes.md", `${match[1].trim()}\n`);
+          '
+
+      - name: Commit version updates
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          git add -A .changeset package.json bun.lock packages
+
+          if git diff --cached --quiet; then
+            echo "No release changes to commit."
+            exit 1
+          fi
+
+          git commit -m "chore(release): version @scripts/release to ${{ steps.version.outputs.version }}"
+          git tag "${{ steps.version.outputs.tag }}"
+
+      - name: Verify push permissions
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          git push --dry-run origin HEAD:${{ github.ref_name }}
+          git push --dry-run origin "${{ steps.version.outputs.tag }}"
+
+      - name: Publish package
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          cd publish
+          bun publish --registry "$NPM_FEED_REGISTRY"
+
+      - name: Push release commit and tag
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Create GitHub release
+        if: steps.version.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "@tapio/release v${{ steps.version.outputs.version }}" \
+            --notes-file release-notes.md
