@@ -161,27 +161,26 @@ jobs:
             exit 1
           fi
 
-          TOKEN="${AZDEVOPS_PAT:-${AZURE_DEVOPS_EXT_PAT:-${AZDEVOPS_TOKEN:-${NPM_TOKEN:-}}}}"
+          TOKEN="${AZDEVOPS_PAT}"
           if [ -z "$TOKEN" ]; then
-            echo "Missing publish token. Set AZDEVOPS_PAT, AZURE_DEVOPS_EXT_PAT, AZDEVOPS_TOKEN, or NPM_TOKEN in the tapioone-azdevops environment."
+            echo "Missing publish token. Set AZDEVOPS_PAT in the tapioone-azdevops environment."
             exit 1
           fi
 
           FEED_PATH="pkgs.dev.azure.com/${AZDEVOPS_ORGANIZATION}/${AZDEVOPS_PROJECT}/_packaging/${AZDEVOPS_PACKAGEFEED}/npm"
           NPM_FEED_REGISTRY="https://${FEED_PATH}/registry/"
+          TOKEN_B64="$(printf '%s' "$TOKEN" | base64 | tr -d '\n')"
 
           echo "NPM_FEED_REGISTRY=${NPM_FEED_REGISTRY}" >> "$GITHUB_ENV"
-          echo "NPM_PASSWORD=${TOKEN}" >> "$GITHUB_ENV"
-          echo "NPM_CONFIG_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
 
           cat > publish/.npmrc <<EOF
           ${NPM_SCOPE}:registry=${NPM_FEED_REGISTRY}
           always-auth=true
           //${FEED_PATH}/registry/:username=github
-          //${FEED_PATH}/registry/:_password=\${NPM_PASSWORD}
+          //${FEED_PATH}/registry/:_password=${TOKEN_B64}
           //${FEED_PATH}/registry/:email=github-actions@users.noreply.github.com
           //${FEED_PATH}/:username=github
-          //${FEED_PATH}/:_password=\${NPM_PASSWORD}
+          //${FEED_PATH}/:_password=${TOKEN_B64}
           //${FEED_PATH}/:email=github-actions@users.noreply.github.com
           EOF
 
