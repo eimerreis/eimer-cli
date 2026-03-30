@@ -236,7 +236,7 @@ jobs:
         run: |
           set -euo pipefail
           cd publish
-          bun publish --registry "$NPM_FEED_REGISTRY" --config bunfig.toml
+          bun publish --registry "$NPM_FEED_REGISTRY" --config=bunfig.toml
 
       - name: Push release commit and tag
         if: steps.version.outputs.changed == 'true'
