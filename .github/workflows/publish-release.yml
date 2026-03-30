@@ -167,7 +167,7 @@ jobs:
             exit 1
           fi
 
-          FEED_PATH="pkgs.dev.azure.com/${AZDEVOPS_ORGANIZATION}/${AZDEVOPS_PROJECT}/_packaging/${AZDEVOPS_PACKAGEFEED}/npm"
+          FEED_PATH="pkgs.dev.azure.com/${AZDEVOPS_ORGANIZATION}/_packaging/${AZDEVOPS_PACKAGEFEED}/npm"
           NPM_FEED_REGISTRY="https://${FEED_PATH}/registry/"
           TOKEN_B64="$(printf '%s' "$TOKEN" | base64 | tr -d '\n')"
 
