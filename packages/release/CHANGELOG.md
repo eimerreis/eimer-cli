@@ -1,5 +1,11 @@
 # @scripts/release
 
+## 0.1.4
+
+### Patch Changes
+
+- baba5ab: adds missing runtime deps
+
 ## 0.1.3
 
 ### Patch Changes
