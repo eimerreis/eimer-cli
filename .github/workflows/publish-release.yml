@@ -169,19 +169,26 @@ jobs:
 
           FEED_PATH="pkgs.dev.azure.com/${AZDEVOPS_ORGANIZATION}/${AZDEVOPS_PROJECT}/_packaging/${AZDEVOPS_PACKAGEFEED}/npm"
           NPM_FEED_REGISTRY="https://${FEED_PATH}/registry/"
-          TOKEN_B64="$(printf '%s' "$TOKEN" | base64 | tr -d '\n')"
 
           echo "NPM_FEED_REGISTRY=${NPM_FEED_REGISTRY}" >> "$GITHUB_ENV"
+          echo "NPM_PASSWORD=${TOKEN}" >> "$GITHUB_ENV"
 
           cat > publish/.npmrc <<EOF
           ${NPM_SCOPE}:registry=${NPM_FEED_REGISTRY}
           always-auth=true
           //${FEED_PATH}/registry/:username=github
-          //${FEED_PATH}/registry/:_password=${TOKEN_B64}
+          //${FEED_PATH}/registry/:_password=\${NPM_PASSWORD}
           //${FEED_PATH}/registry/:email=github-actions@users.noreply.github.com
           //${FEED_PATH}/:username=github
-          //${FEED_PATH}/:_password=${TOKEN_B64}
+          //${FEED_PATH}/:_password=\${NPM_PASSWORD}
           //${FEED_PATH}/:email=github-actions@users.noreply.github.com
+          EOF
+
+          cat > publish/bunfig.toml <<EOF
+          [install.registry]
+          url = "${NPM_FEED_REGISTRY}"
+          username = "github"
+          password = "\$NPM_PASSWORD"
           EOF
 
       - name: Extract release notes
@@ -229,7 +236,7 @@ jobs:
         run: |
           set -euo pipefail
           cd publish
-          bun publish --registry "$NPM_FEED_REGISTRY"
+          bun publish --registry "$NPM_FEED_REGISTRY" --config bunfig.toml
 
       - name: Push release commit and tag
         if: steps.version.outputs.changed == 'true'
