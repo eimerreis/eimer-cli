@@ -5,15 +5,20 @@ CLI for Azure DevOps release workflows.
 
 ## Configuration
 
-Path: `~/.config/scripts-release/config.json`
+Path: `~/.config/tapio-release/config.json`
 
 ```json
 {
   "teams": {
-    "webhookUrl": "https://..."
+    "webhookUrl": "https://...",
+    "channels": {
+      "frontend-releases": "https://...",
+      "backend-releases": "https://..."
+    }
   },
   "release": {
-    "defaultPipeline": "example-release-pipeline"
+    "defaultPipeline": "example-release-pipeline",
+    "prodStageName": "deploy_production"
   },
   "areas": {
     "frontend": {
@@ -31,9 +36,24 @@ Path: `~/.config/scripts-release/config.json`
 ```
 
 Notes:
-- `teams.webhookUrl` is used when `changelog` runs without `--post-webhook`
+- `teams.webhookUrl` is the default channel for backward compatibility
+- `teams.channels` lets you configure named webhook targets (use with `--channel <name>`)
 - `release.defaultPipeline` is used as the default pipeline prompt value
+- `release.prodStageName` overrides automatic prod-stage detection in release run scanning
 - `areas` entries merge with defaults (`frontend`, `backend`, `infra`) and can override them
+
+## Azure DevOps auth/context resolution
+
+Auth precedence:
+1. `SYSTEM_ACCESSTOKEN` (Azure Pipelines OAuth token)
+2. `AZURE_DEVOPS_PAT` (manual PAT, useful outside Azure Pipelines)
+3. `az account get-access-token` fallback (local developer flow)
+
+Context precedence:
+1. `SYSTEM_COLLECTIONURI` + `SYSTEM_TEAMPROJECT`
+2. `az devops configure --list` fallback (local developer flow)
+
+This means CI does not need Azure CLI if pipeline variables are present.
 
 ## Development
 
@@ -65,6 +85,31 @@ release changelog --pipeline "example-release-pipeline" --post-webhook "https://
 ```
 
 The command shows the changelog before posting, lets you edit it in your editor, and asks for confirmation before sending. If VS Code is available, you can also choose an edit flow where the next file save posts automatically. That flow writes a visible `eimer-release-changelog-*.md` file into the current working directory so you can inspect it directly. It tries an Adaptive Card payload first, then falls back to a MessageCard payload if needed.
+
+## CI usage (Azure Pipelines)
+
+In CI/non-interactive mode:
+- pass `--pipeline <name>` or configure `release.defaultPipeline`
+- pass `--post-webhook <url>` or `--channel <name>`
+- clipboard copy and interactive review are skipped automatically
+
+Example pipeline step (after successful prod deployment stage):
+
+```yaml
+- script: |
+    bunx @tapio/release changelog \
+      --pipeline "$(ReleasePipelineName)" \
+      --post-webhook "$(TEAMS_RELEASE_WEBHOOK)" \
+      --no-copy
+  displayName: "Post release changelog"
+  env:
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+    SYSTEM_COLLECTIONURI: $(System.CollectionUri)
+    SYSTEM_TEAMPROJECT: $(System.TeamProject)
+```
+
+Important Azure Pipelines setting:
+- enable **Allow scripts to access OAuth token** so `$(System.AccessToken)` is available
 
 ## Publish pipeline
 
