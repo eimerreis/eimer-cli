@@ -1,5 +1,14 @@
 # @scripts/release
 
+## 0.2.0
+
+### Minor Changes
+
+- a822169: - makes the package ready for CI/CD scenarios
+  - adds multi channel functionality
+  - improves UX and error handling
+  - fixes an issue with the adaptive cards version for Microsoft Teams
+
 ## 0.1.4
 
 ### Patch Changes
