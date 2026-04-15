@@ -1,3 +1,5 @@
+import { createAzureDevOpsClient, type AzureContext, type AzureDevOpsClient } from "../azure-client";
+
 type PipelineDefinition = {
   id: number;
   name?: string;
@@ -21,12 +23,6 @@ type PipelineRun = {
     name?: string;
     type?: string;
   };
-};
-
-type AzureContext = {
-  organizationUrl: string;
-  project: string;
-  baseUrl: string;
 };
 
 type CommitInfo = {
@@ -58,52 +54,27 @@ type ChangelogGroups = {
   other: CommitInfo[];
 };
 
-async function runText(command: string[]): Promise<string> {
-  const process = Bun.spawn({
-    cmd: command,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+type PipelineDefinitionListResponse = {
+  value?: PipelineDefinition[];
+};
 
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-    process.exited,
-  ]);
+type PipelineRunListResponse = {
+  value?: PipelineRun[];
+};
 
-  if (exitCode !== 0) {
-    throw new Error(`Command failed (${command.join(" ")}): ${stderr.trim() || stdout.trim()}`);
+let azureClientPromise: Promise<{ context: AzureContext; client: AzureDevOpsClient }> | undefined;
+
+async function getAzureClient(): Promise<{ context: AzureContext; client: AzureDevOpsClient }> {
+  if (!azureClientPromise) {
+    azureClientPromise = createAzureDevOpsClient();
   }
 
-  return stdout;
-}
-
-async function runJson<T>(command: string[]): Promise<T> {
-  const raw = await runText(command);
-  try {
-    return JSON.parse(raw) as T;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse JSON from '${command.join(" ")}': ${message}`);
-  }
+  return azureClientPromise;
 }
 
 async function getAzureContext(): Promise<AzureContext> {
-  const config = await runText(["az", "devops", "configure", "--list"]);
-  const organizationUrl = (config.match(/^organization\s*=\s*(.+)$/im)?.[1] || "").trim();
-  const project = (config.match(/^project\s*=\s*(.+)$/im)?.[1] || "").trim();
-
-  if (!organizationUrl || !project) {
-    throw new Error(
-      "Azure DevOps defaults missing. Configure with 'az devops configure -d organization=<url> project=<name>'.",
-    );
-  }
-
-  return {
-    organizationUrl,
-    project,
-    baseUrl: `${organizationUrl.replace(/\/$/, "")}/${project}`,
-  };
+  const { context } = await getAzureClient();
+  return context;
 }
 
 function buildRunUrl(context: AzureContext, runId: number): string {
@@ -111,19 +82,12 @@ function buildRunUrl(context: AzureContext, runId: number): string {
 }
 
 async function resolvePipelineByName(name: string): Promise<PipelineDefinition> {
-  const definitions = await runJson<PipelineDefinition[]>([
-    "az",
-    "pipelines",
-    "list",
-    "--name",
+  const { client } = await getAzureClient();
+  const response = await client.getJson<PipelineDefinitionListResponse>("/_apis/build/definitions", {
     name,
-    "--top",
-    "20",
-    "--detect",
-    "true",
-    "--output",
-    "json",
-  ]);
+    "$top": 20,
+  });
+  const definitions = response.value || [];
 
   const exact = definitions.find((item) => (item.name || "").toLowerCase() === name.toLowerCase());
   if (!exact) {
@@ -134,18 +98,8 @@ async function resolvePipelineByName(name: string): Promise<PipelineDefinition> 
 }
 
 async function loadRunById(id: number): Promise<PipelineRun> {
-  return runJson<PipelineRun>([
-    "az",
-    "pipelines",
-    "runs",
-    "show",
-    "--id",
-    String(id),
-    "--detect",
-    "true",
-    "--output",
-    "json",
-  ]);
+  const { client } = await getAzureClient();
+  return client.getJson<PipelineRun>(`/_apis/build/builds/${id}`);
 }
 
 async function loadPipelineRuns(options: {
@@ -153,33 +107,19 @@ async function loadPipelineRuns(options: {
   top?: number;
   status?: string;
   result?: string;
+  branch?: string;
 }): Promise<PipelineRun[]> {
-  const command = [
-    "az",
-    "pipelines",
-    "runs",
-    "list",
-    "--pipeline-ids",
-    String(options.pipelineId),
-    "--top",
-    String(options.top || 100),
-    "--query-order",
-    "QueueTimeDesc",
-    "--detect",
-    "true",
-    "--output",
-    "json",
-  ];
+  const { client } = await getAzureClient();
+  const response = await client.getJson<PipelineRunListResponse>("/_apis/build/builds", {
+    definitions: options.pipelineId,
+    "$top": options.top || 100,
+    queryOrder: "queueTimeDescending",
+    statusFilter: options.status,
+    resultFilter: options.result,
+    branchName: options.branch,
+  });
 
-  if (options.status) {
-    command.push("--status", options.status);
-  }
-
-  if (options.result) {
-    command.push("--result", options.result);
-  }
-
-  return runJson<PipelineRun[]>(command);
+  return response.value || [];
 }
 
 function ensureRunBelongsToPipeline(run: PipelineRun, pipelineId: number): void {
@@ -222,6 +162,7 @@ function resolveStringArg(flag: string | undefined, positional: string[]): strin
 export {
   buildRunUrl,
   ensureRunBelongsToPipeline,
+  getAzureClient,
   getAzureContext,
   loadPipelineRuns,
   loadRunById,
@@ -229,8 +170,6 @@ export {
   resolveIdArg,
   resolveStringArg,
   resolvePipelineByName,
-  runJson,
-  runText,
 };
 
 export type { AzureContext, ChangelogGroups, CommitInfo, ConventionalCommit, PipelineDefinition, PipelineRun };

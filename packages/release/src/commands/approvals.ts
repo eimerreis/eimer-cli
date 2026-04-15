@@ -1,4 +1,4 @@
-import { runJson, type AzureContext } from "./utils";
+import { getAzureClient, type AzureContext } from "./utils";
 
 type Approval = {
   id: string;
@@ -25,18 +25,16 @@ type ApprovalResponse = {
 };
 
 async function loadPendingApprovals(context: AzureContext): Promise<Approval[]> {
-  const response = await runJson<ApprovalResponse>([
-    "az",
-    "rest",
-    "--resource",
-    "499b84ac-1321-427f-aa17-267ca6975798",
-    "--method",
-    "get",
-    "--url",
-    `${context.baseUrl}/_apis/pipelines/approvals?api-version=7.1&state=pending`,
-    "--output",
-    "json",
-  ]);
+  const { client, context: resolvedContext } = await getAzureClient();
+  if (resolvedContext.baseUrl !== context.baseUrl) {
+    throw new Error(
+      `Azure DevOps context mismatch. Expected '${context.baseUrl}', resolved '${resolvedContext.baseUrl}'. Set SYSTEM_COLLECTIONURI and SYSTEM_TEAMPROJECT to align context.`,
+    );
+  }
+
+  const response = await client.getJson<ApprovalResponse>("/_apis/pipelines/approvals", {
+    state: "pending",
+  });
 
   return response.value || [];
 }
@@ -48,22 +46,14 @@ async function approveApprovals(context: AzureContext, approvalIds: string[], co
     comment,
   }));
 
-  const response = await runJson<ApprovalResponse>([
-    "az",
-    "rest",
-    "--resource",
-    "499b84ac-1321-427f-aa17-267ca6975798",
-    "--method",
-    "patch",
-    "--url",
-    `${context.baseUrl}/_apis/pipelines/approvals?api-version=7.1`,
-    "--headers",
-    "Content-Type=application/json",
-    "--body",
-    JSON.stringify(payload),
-    "--output",
-    "json",
-  ]);
+  const { client, context: resolvedContext } = await getAzureClient();
+  if (resolvedContext.baseUrl !== context.baseUrl) {
+    throw new Error(
+      `Azure DevOps context mismatch. Expected '${context.baseUrl}', resolved '${resolvedContext.baseUrl}'. Set SYSTEM_COLLECTIONURI and SYSTEM_TEAMPROJECT to align context.`,
+    );
+  }
+
+  const response = await client.patchJson<ApprovalResponse>("/_apis/pipelines/approvals", payload);
 
   return response.value || [];
 }

@@ -1,4 +1,4 @@
-import { runJson } from "./utils";
+import { getAzureClient } from "./utils";
 
 type BuildTimelineRecord = {
   type?: string;
@@ -22,18 +22,14 @@ type PipelineStageRecord = {
 type ProdStageCache = Map<string, boolean>;
 
 async function loadPipelineTimeline(baseUrl: string, runId: number): Promise<BuildTimeline> {
-  return runJson<BuildTimeline>([
-    "az",
-    "rest",
-    "--resource",
-    "499b84ac-1321-427f-aa17-267ca6975798",
-    "--method",
-    "get",
-    "--url",
-    `${baseUrl}/_apis/build/builds/${runId}/timeline?api-version=7.1`,
-    "--output",
-    "json",
-  ]);
+  const { client, context } = await getAzureClient();
+  if (context.baseUrl !== baseUrl) {
+    throw new Error(
+      `Azure DevOps context mismatch. Expected '${baseUrl}', resolved '${context.baseUrl}'. Set SYSTEM_COLLECTIONURI and SYSTEM_TEAMPROJECT to align context.`,
+    );
+  }
+
+  return client.getJson<BuildTimeline>(`/_apis/build/builds/${runId}/timeline`);
 }
 
 async function listPipelineStages(baseUrl: string, runId: number): Promise<PipelineStageRecord[]> {

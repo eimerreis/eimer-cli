@@ -10,11 +10,13 @@ import { reviewTeamsMarkdown } from "./teams-review";
 import { postChangelogToTeams } from "./teams-webhook";
 import {
   buildRunUrl,
+  getAzureClient,
   getAzureContext,
+  loadPipelineRuns,
+  loadRunById,
   normalizeText,
   resolveStringArg,
   resolvePipelineByName,
-  runJson,
   type CommitInfo,
   type PipelineRun,
 } from "./utils";
@@ -65,6 +67,8 @@ const changelogCommand = defineCommand({
   },
   handler: async ({ flags, positional, prompt }) => {
     try {
+      const isInteractiveTerminal = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+      const isCiMode = isCiEnvironment() || !isInteractiveTerminal;
       const config = await withSpinner("Loading release config", () => loadConfig(), {
         silentFailure: true,
         silentSuccess: true,
@@ -81,17 +85,25 @@ const changelogCommand = defineCommand({
 
       let pipelineName = resolveStringArg(flags.pipeline, positional);
       if (!pipelineName) {
-        pipelineName = (
-          await prompt.text("Pipeline name", {
-            placeholder: defaultPipeline || "example-release-pipeline",
-            fallbackValue: defaultPipeline,
-            validate: (value) => (value.trim().length > 0 ? true : "Pipeline name is required"),
-          })
-        ).trim();
+        pipelineName = defaultPipeline;
       }
 
       if (!pipelineName) {
-        throw new Error("Missing pipeline name. Usage: release changelog [pipeline]. Pass a pipeline name or configure a default with 'eimer configure'.");
+        if (isInteractiveTerminal) {
+          pipelineName = (
+            await prompt.text("Pipeline name", {
+              placeholder: defaultPipeline || "example-release-pipeline",
+              fallbackValue: defaultPipeline,
+              validate: (value) => (value.trim().length > 0 ? true : "Pipeline name is required"),
+            })
+          ).trim();
+        }
+      }
+
+      if (!pipelineName) {
+        throw new Error(
+          "Missing pipeline name. Pass `--pipeline <name>` or configure `release.defaultPipeline` via `release configure`.",
+        );
       }
 
       const pipeline = await withSpinner("Resolving pipeline", () => resolvePipelineByName(pipelineName), {
@@ -193,7 +205,7 @@ const changelogCommand = defineCommand({
           adHocWebhookUrl: flags["post-webhook"],
           selectedChannel: flags.channel,
           channels: resolvedChannels,
-          useInteractivePrompt: !flags.json && process.stdin.isTTY && process.stdout.isTTY,
+          useInteractivePrompt: !flags.json && isInteractiveTerminal,
         },
         prompt as unknown as {
           select(
@@ -210,9 +222,16 @@ const changelogCommand = defineCommand({
         },
       );
       const webhookUrl = webhookTarget.webhookUrl;
+
+      if (isCiMode && !webhookUrl) {
+        throw new Error(
+          "Missing Teams webhook in CI mode. Pass `--post-webhook <url>` or `--channel <name>` with configured channels.",
+        );
+      }
+
       let skippedWebhookPost = false;
 
-      if (webhookUrl && !flags.json && process.stdin.isTTY && process.stdout.isTTY) {
+      if (webhookUrl && !flags.json && isInteractiveTerminal) {
         const review = await reviewTeamsMarkdown(markdown, prompt as unknown as {
           select(
             message: string,
@@ -286,12 +305,14 @@ const changelogCommand = defineCommand({
 
       console.log(markdown);
 
-      if (!flags["no-copy"]) {
+      if (!flags["no-copy"] && isInteractiveTerminal) {
         await withSpinner("Copying changelog to clipboard", () => copyToClipboard(markdown), {
           silentFailure: true,
           silentSuccess: true,
         });
         printSuccess("Copied changelog to clipboard.");
+      } else if (!flags["no-copy"]) {
+        printInfo("Skipped clipboard copy in non-interactive mode.");
       }
 
       if (postedFormat) {
@@ -302,7 +323,10 @@ const changelogCommand = defineCommand({
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      printError(`Failed to build changelog: ${message}`, "Verify your Azure DevOps defaults and release pipeline name with `eimer configure --show`.");
+      printError(
+        `Failed to build changelog: ${message}`,
+        "Verify SYSTEM_ACCESSTOKEN/SYSTEM_COLLECTIONURI/SYSTEM_TEAMPROJECT in CI or local Azure defaults with `release configure --show`.",
+      );
       process.exit(1);
     }
   },
@@ -316,18 +340,7 @@ async function resolveFromRun(
   prodStageName?: string,
 ): Promise<PipelineRun> {
   if (fromRunId) {
-    const run = await runJson<PipelineRun>([
-      "az",
-      "pipelines",
-      "runs",
-      "show",
-      "--id",
-      String(fromRunId),
-      "--detect",
-      "true",
-      "--output",
-      "json",
-    ]);
+    const run = await loadRunById(fromRunId);
     validateRunIsMasterSuccess(run, pipelineId);
     return run;
   }
@@ -417,28 +430,13 @@ async function resolvePreviousProdReleaseRun(
 }
 
 async function loadSucceededMasterRuns(pipelineId: number, top: number): Promise<PipelineRun[]> {
-  return runJson<PipelineRun[]>([
-    "az",
-    "pipelines",
-    "runs",
-    "list",
-    "--pipeline-ids",
-    String(pipelineId),
-    "--status",
-    "completed",
-    "--result",
-    "succeeded",
-    "--branch",
-    "master",
-    "--top",
-    String(top),
-    "--query-order",
-    "QueueTimeDesc",
-    "--detect",
-    "true",
-    "--output",
-    "json",
-  ]);
+  return loadPipelineRuns({
+    pipelineId,
+    status: "completed",
+    result: "succeeded",
+    branch: "master",
+    top,
+  });
 }
 
 function validateRunIsMasterSuccess(run: PipelineRun, pipelineId: number): void {
@@ -461,20 +459,21 @@ function validateRunIsMasterSuccess(run: PipelineRun, pipelineId: number): void 
 }
 
 async function resolveLatestMasterCommit(baseUrl: string, repositoryId: string): Promise<string> {
-  const response = await runJson<AzureGitCommitResponse>([
-    "az",
-    "rest",
-    "--resource",
-    "499b84ac-1321-427f-aa17-267ca6975798",
-    "--method",
-    "get",
-    "--url",
-    `${baseUrl}/_apis/git/repositories/${repositoryId}/commits?searchCriteria.itemVersion.version=master&searchCriteria.itemVersion.versionType=branch&searchCriteria.historyMode=firstParent&searchCriteria.$top=1&api-version=7.1`,
-    "--output",
-    "json",
-  ]);
+  const client = await getAzureClientForBaseUrl(baseUrl);
+  const response = await client.getJson<AzureGitCommitResponse>(`/_apis/git/repositories/${repositoryId}/commits`, {
+    "searchCriteria.itemVersion.version": "master",
+    "searchCriteria.itemVersion.versionType": "branch",
+    "searchCriteria.historyMode": "firstParent",
+    "searchCriteria.$top": 1,
+  });
 
   return (response.value?.[0]?.commitId || "").trim();
+}
+
+function isCiEnvironment(): boolean {
+  return ["CI", "TF_BUILD", "SYSTEM_ACCESSTOKEN", "SYSTEM_COLLECTIONURI", "SYSTEM_TEAMPROJECT"].some(
+    (name) => (process.env[name] || "").trim().length > 0,
+  );
 }
 
 async function loadRemoteMasterCommitRange(options: {
@@ -483,6 +482,7 @@ async function loadRemoteMasterCommitRange(options: {
   fromCommit: string;
   toCommit: string;
 }): Promise<CommitInfo[]> {
+  const client = await getAzureClientForBaseUrl(options.baseUrl);
   const commits: CommitInfo[] = [];
   const seen = new Set<string>();
   let skip = 0;
@@ -490,18 +490,13 @@ async function loadRemoteMasterCommitRange(options: {
   const maxPages = 20;
 
   for (let page = 0; page < maxPages; page += 1) {
-    const response = await runJson<AzureGitCommitResponse>([
-      "az",
-      "rest",
-      "--resource",
-      "499b84ac-1321-427f-aa17-267ca6975798",
-      "--method",
-      "get",
-      "--url",
-      `${options.baseUrl}/_apis/git/repositories/${options.repositoryId}/commits?searchCriteria.itemVersion.version=${options.toCommit}&searchCriteria.itemVersion.versionType=commit&searchCriteria.historyMode=firstParent&searchCriteria.$top=${pageSize}&searchCriteria.$skip=${skip}&api-version=7.1`,
-      "--output",
-      "json",
-    ]);
+    const response = await client.getJson<AzureGitCommitResponse>(`/_apis/git/repositories/${options.repositoryId}/commits`, {
+      "searchCriteria.itemVersion.version": options.toCommit,
+      "searchCriteria.itemVersion.versionType": "commit",
+      "searchCriteria.historyMode": "firstParent",
+      "searchCriteria.$top": pageSize,
+      "searchCriteria.$skip": skip,
+    });
 
     const items = response.value || [];
     if (items.length === 0) {
@@ -543,6 +538,17 @@ async function loadRemoteMasterCommitRange(options: {
   throw new Error(
     `Could not resolve master commit range from ${options.fromCommit.slice(0, 7)} to ${options.toCommit.slice(0, 7)} within first-parent history.`,
   );
+}
+
+async function getAzureClientForBaseUrl(baseUrl: string): Promise<Awaited<ReturnType<typeof getAzureClient>>["client"]> {
+  const { client, context } = await getAzureClient();
+  if (context.baseUrl !== baseUrl) {
+    throw new Error(
+      `Azure DevOps context mismatch. Expected '${baseUrl}', resolved '${context.baseUrl}'. Set SYSTEM_COLLECTIONURI and SYSTEM_TEAMPROJECT to align context.`,
+    );
+  }
+
+  return client;
 }
 
 function parseSubjectAndPr(
