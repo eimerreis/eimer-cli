@@ -1,15 +1,14 @@
 import { defineCommand, option } from "@bunli/core";
+import { formatRelativeTime, printError, printInfo, renderTable, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import {
   buildWorkItemUrl,
   extractAssignedTo,
-  formatRelativeTime,
   getDefaultTeam,
   getStateEmoji,
   loadCurrentIterationByTeam,
   resolveIdArg,
   runJson,
-  terminalLink,
   tryGetAzureContext,
   type WorkItem,
 } from "./utils";
@@ -52,15 +51,29 @@ const listCommand = defineCommand({
     try {
       const parentId = resolveIdArg(flags.parent, positional);
       if (parentId) {
-        await listByParent(parentId, flags.all, flags.top, flags.json);
+        if (flags.json) {
+          await listByParent(parentId, flags.all, flags.top, flags.json);
+        } else {
+          await withSpinner("Loading child tasks", () => listByParent(parentId, flags.all, flags.top, flags.json), {
+            silentFailure: true,
+            silentSuccess: true,
+          });
+        }
         return;
       }
 
       const team = flags.team?.trim() || (await getDefaultTeam());
-      await listBySprint(team, flags.all, flags.top, flags.json);
+      if (flags.json) {
+        await listBySprint(team, flags.all, flags.top, flags.json);
+      } else {
+        await withSpinner("Loading sprint tasks", () => listBySprint(team, flags.all, flags.top, flags.json), {
+          silentFailure: true,
+          silentSuccess: true,
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to list tasks: ${message}`);
+      printError(`Failed to list tasks: ${message}`);
       process.exit(1);
     }
   },
@@ -110,11 +123,14 @@ async function listBySprint(team: string, includeAllStates: boolean, top: number
   }
 
   if (normalized.length === 0) {
-    console.log(`No ${includeAllStates ? "tasks" : "active tasks"} found for '${iterationPath}'.`);
+    printInfo(
+      `No ${includeAllStates ? "tasks" : "active tasks"} found for '${iterationPath}'.`,
+      includeAllStates ? undefined : "Try --all to include non-active states.",
+    );
     return;
   }
 
-  console.log(`Sprint: ${iterationPath} | Team: ${team}`);
+  printInfo(`Sprint ${iterationPath}`, `Team: ${team}`);
   await printItems(normalized);
 }
 
@@ -151,11 +167,14 @@ async function listByParent(parentId: number, includeAllStates: boolean, top: nu
   console.log(terminalLink(parentLine, buildWorkItemUrl(parentNode.id, context)));
 
   if (taskChildren.length === 0) {
-    console.log(`No ${includeAllStates ? "task" : "active task"} children found.`);
+    printInfo(
+      `No ${includeAllStates ? "task" : "active task"} children found.`,
+      includeAllStates ? undefined : "Try --all to include non-active child tasks.",
+    );
     return;
   }
 
-  await printItems(taskChildren, "  - ");
+  await printItems(taskChildren);
 }
 
 async function loadWorkItem(id: number, includeRelations: boolean): Promise<WorkItem> {
@@ -201,15 +220,17 @@ function normalizeItem(item: WorkItem): ListItem {
   };
 }
 
-async function printItems(items: ListItem[], prefix = ""): Promise<void> {
+async function printItems(items: ListItem[]): Promise<void> {
   const context = await tryGetAzureContext();
+  const rows = items.map((item) => [
+    getStateEmoji(item.state),
+    terminalLink(`#${item.id}`, buildWorkItemUrl(item.id, context)),
+    item.title,
+    item.assignedTo,
+    item.changedDate ? formatRelativeTime(item.changedDate) : "-",
+  ]);
 
-  for (const item of items) {
-    const changed = formatRelativeTime(item.changedDate);
-    const changedSuffix = changed ? ` | ${changed}` : "";
-    const line = `${prefix}${getStateEmoji(item.state)} #${item.id} ${item.title} | ${item.assignedTo}${changedSuffix}`;
-    console.log(terminalLink(line, buildWorkItemUrl(item.id, context)));
-  }
+  console.log(renderTable(["State", "Task", "Title", "Assigned", "Updated"], rows, { wordWrap: true }));
 }
 
 function escapeWiqlValue(value: string): string {

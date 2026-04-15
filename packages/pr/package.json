@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@bunli/core": "latest",
+    "@scripts/ui": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

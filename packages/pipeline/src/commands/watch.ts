@@ -1,10 +1,12 @@
 import { defineCommand, option } from "@bunli/core";
+import { printError, printInfo, printSuccess, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import {
   buildRunMessage,
+  buildRunUrl,
   calculateDuration,
+  formatRunStatus,
   getRepoInfo,
-  getRunIndicator,
   resolveIdArg,
   runJson,
   runMatchesRepo,
@@ -33,14 +35,17 @@ const watchCommand = defineCommand({
       let runId = resolveIdArg(flags.id, positional);
 
       if (!runId) {
-        runId = await resolveLatestRepoRunId();
+        runId = await withSpinner("Finding latest pipeline run", () => resolveLatestRepoRunId(), {
+          silentFailure: true,
+        });
       }
 
       if (!runId) {
-        throw new Error("Missing run ID. Usage: pipeline watch [id]");
+        throw new Error("Missing run ID. Usage: pipeline watch [id]. Try 'pipeline runs' first to pick a run.");
       }
 
       let lastPrintedStatus = "";
+      printInfo(`Watching pipeline run #${runId}.`, `Polling every ${flags.interval}s.`);
 
       while (true) {
         const run = await runJson<PipelineRun>([
@@ -56,11 +61,10 @@ const watchCommand = defineCommand({
           "json",
         ]);
 
-        const indicator = getRunIndicator(run.status, run.result);
         const message = buildRunMessage(run);
         const pipelineName = run.definition?.name || "Unknown pipeline";
         const duration = calculateDuration(run.startTime, run.finishTime);
-        const statusLine = `${indicator} #${run.id} ${pipelineName} | ${message} | ${duration}`;
+        const statusLine = `${formatRunStatus(run.status, run.result)} ${terminalLink(`#${run.id}`, buildRunUrl(run.id))} ${pipelineName} | ${message} | ${duration}`;
 
         if (statusLine !== lastPrintedStatus) {
           console.log(statusLine);
@@ -73,6 +77,13 @@ const watchCommand = defineCommand({
           }
 
           const result = (run.result || "").toLowerCase();
+          if (!flags.json) {
+            if (result === "succeeded") {
+              printSuccess(`Pipeline run #${run.id} completed successfully.`);
+            } else {
+              printError(`Pipeline run #${run.id} completed with result '${run.result || "unknown"}'.`);
+            }
+          }
           process.exit(result === "succeeded" ? 0 : 1);
         }
 
@@ -80,7 +91,7 @@ const watchCommand = defineCommand({
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to watch pipeline run: ${message}`);
+      printError(`Failed to watch pipeline run: ${message}`, "Make sure Azure CLI is authenticated and the run belongs to the configured project.");
       process.exit(1);
     }
   },

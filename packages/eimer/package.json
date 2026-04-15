@@ -22,6 +22,7 @@
     "@scripts/pr": "workspace:*",
     "@scripts/release": "workspace:*",
     "@scripts/task": "workspace:*",
+    "@scripts/ui": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

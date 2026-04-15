@@ -1,15 +1,14 @@
 import { defineCommand, option } from "@bunli/core";
+import { formatRelativeTime, printError, printInfo, renderTable, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import {
   buildRunMessage,
   buildRunUrl,
   calculateDuration,
-  formatRelativeTime,
+  formatRunStatus,
   getRepoInfo,
-  getRunIndicator,
   runJson,
   runMatchesRepo,
-  terminalLink,
   type PipelineRun,
 } from "./utils";
 
@@ -44,7 +43,10 @@ const runsCommand = defineCommand({
   },
   handler: async ({ flags }) => {
     try {
-      const repoInfo = await getRepoInfo();
+      const repoInfo = await withSpinner("Detecting repository", () => getRepoInfo(), {
+        silentFailure: true,
+        silentSuccess: true,
+      });
       const requestedTop = flags.top;
       const fetchTop = flags.all ? requestedTop : Math.min(Math.max(requestedTop * 5, 50), 200);
 
@@ -75,7 +77,11 @@ const runsCommand = defineCommand({
         command.push("--result", flags.result);
       }
 
-      const allRuns = await runJson<PipelineRun[]>(command);
+      const allRuns = await withSpinner(
+        "Loading pipeline runs",
+        () => runJson<PipelineRun[]>(command),
+        { silentFailure: true },
+      );
       const filtered = flags.all ? allRuns : allRuns.filter((run) => runMatchesRepo(run, repoInfo.name));
       const runs = filtered.slice(0, requestedTop);
 
@@ -96,23 +102,23 @@ const runsCommand = defineCommand({
 
       if (runs.length === 0) {
         const scope = flags.all ? "all repos" : `repo '${repoInfo.name}'`;
-        console.log(`No pipeline runs found for ${scope}.`);
+        printInfo(`No pipeline runs found for ${scope}.`, flags.all ? undefined : "Try --all to include other repositories.");
         return;
       }
 
-      for (const run of runs) {
-        const indicator = getRunIndicator(run.status, run.result);
-        const message = buildRunMessage(run);
-        const pipelineName = run.definition?.name || "Unknown pipeline";
-        const duration = calculateDuration(run.startTime, run.finishTime);
-        const when = formatRelativeTime(run.queueTime);
-        const whenSuffix = when ? ` | ${when}` : "";
-        const line = `${indicator} #${run.id} ${message} | ${pipelineName} | ${duration}${whenSuffix}`;
-        console.log(terminalLink(line, buildRunUrl(run.id)));
-      }
+      const rows = runs.map((run) => [
+        formatRunStatus(run.status, run.result),
+        terminalLink(`#${run.id}`, buildRunUrl(run.id)),
+        run.definition?.name || "Unknown pipeline",
+        buildRunMessage(run),
+        calculateDuration(run.startTime, run.finishTime),
+        formatRelativeTime(run.queueTime) || "-",
+      ]);
+
+      console.log(renderTable(["State", "Run", "Pipeline", "Message", "Duration", "Queued"], rows, { wordWrap: true }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to list pipeline runs: ${message}`);
+      printError(`Failed to list pipeline runs: ${message}`);
       process.exit(1);
     }
   },

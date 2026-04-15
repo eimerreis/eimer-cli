@@ -1,4 +1,5 @@
 import { defineCommand, option } from "@bunli/core";
+import { printError, printInfo, renderTable, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import { runJson } from "./utils";
 
@@ -35,17 +36,22 @@ const listCommand = defineCommand({
         regex: globPatternToRegex(pattern),
       }));
 
-      const allPipelines = await runJson<PipelineListItem[]>([
-        "az",
-        "pipelines",
-        "list",
-        "--top",
-        String(flags.top),
-        "--detect",
-        "true",
-        "--output",
-        "json",
-      ]);
+      const allPipelines = await withSpinner(
+        "Loading pipelines",
+        () =>
+          runJson<PipelineListItem[]>([
+            "az",
+            "pipelines",
+            "list",
+            "--top",
+            String(flags.top),
+            "--detect",
+            "true",
+            "--output",
+            "json",
+          ]),
+        { silentFailure: true },
+      );
 
       const filtered = allPipelines
         .filter((pipeline) => matchesPipelineName(pipeline.name || "", matchers))
@@ -69,22 +75,26 @@ const listCommand = defineCommand({
 
       if (filtered.length === 0) {
         if (patterns.length === 0) {
-          console.log("No pipelines found.");
+          printInfo("No pipelines found.");
           return;
         }
 
-        console.log(`No pipelines match: ${patterns.join(", ")}`);
+        printInfo(`No pipelines match: ${patterns.join(", ")}.`, "Try --filter '*name*' or increase --top.");
         return;
       }
 
-      for (const pipeline of filtered) {
-        const name = pipeline.name || "Unnamed";
-        const path = pipeline.path || "\\";
-        console.log(`#${pipeline.id} ${name} | ${path}`);
-      }
+      const rows = filtered.map((pipeline) => [
+        `#${pipeline.id}`,
+        pipeline.name || "Unnamed",
+        pipeline.path || "\\",
+        pipeline.queueStatus || "-",
+        pipeline.revision ?? "-",
+      ]);
+
+      console.log(renderTable(["Pipeline", "Name", "Path", "Queue", "Rev"], rows, { wordWrap: true }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to list pipelines: ${message}`);
+      printError(`Failed to list pipelines: ${message}`);
       process.exit(1);
     }
   },

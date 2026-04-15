@@ -1,15 +1,14 @@
 import { defineCommand, option } from "@bunli/core";
+import { bold, formatRelativeTime, printError, renderTable, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import {
   buildRunMessage,
   buildRunUrl,
   calculateDuration,
-  formatRelativeTime,
-  getRunIndicator,
+  formatRunStatus,
   resolveIdArg,
   runJson,
   stripBranchPrefix,
-  terminalLink,
   type PipelineRun,
 } from "./utils";
 
@@ -48,25 +47,29 @@ const showCommand = defineCommand({
         throw new Error("Missing run ID. Usage: pipeline show [id]");
       }
 
-      const run = await runJson<PipelineRun>([
-        "az",
-        "pipelines",
-        "runs",
-        "show",
-        "--id",
-        String(runId),
-        "--detect",
-        "true",
-        "--output",
-        "json",
-      ]);
+       const run = await withSpinner(
+         `Loading pipeline run #${runId}`,
+         () =>
+           runJson<PipelineRun>([
+             "az",
+             "pipelines",
+             "runs",
+             "show",
+             "--id",
+             String(runId),
+             "--detect",
+             "true",
+             "--output",
+             "json",
+           ]),
+         { silentFailure: true },
+       );
 
       if (flags.json) {
         console.log(JSON.stringify(run, null, 2));
         return;
       }
 
-      const indicator = getRunIndicator(run.status, run.result);
       const pipelineName = run.definition?.name || "Unknown pipeline";
       const message = buildRunMessage(run);
       const branch = stripBranchPrefix(run.sourceBranch) || "unknown";
@@ -76,17 +79,26 @@ const showCommand = defineCommand({
       const sourceVersion = run.sourceVersion || "unknown";
       const reason = run.reason || "unknown";
 
-      console.log(terminalLink(`${indicator} #${run.id} ${pipelineName}`, buildRunUrl(run.id)));
-      console.log(`Message:  ${message}`);
-      console.log(`Branch:   ${branch}`);
-      console.log(`By:       ${requestedBy}`);
-      console.log(`Reason:   ${reason}`);
-      console.log(`Queued:   ${queued}`);
-      console.log(`Duration: ${duration}`);
-      console.log(`Commit:   ${sourceVersion}`);
+      console.log(terminalLink(`${bold(pipelineName)} #${run.id}`, buildRunUrl(run.id)));
+      console.log(
+        renderTable(
+          ["Field", "Value"],
+          [
+            ["State", formatRunStatus(run.status, run.result)],
+            ["Message", message],
+            ["Branch", branch],
+            ["By", requestedBy],
+            ["Reason", reason],
+            ["Queued", queued],
+            ["Duration", duration],
+            ["Commit", sourceVersion],
+          ],
+          { wordWrap: true },
+        ),
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to show pipeline run: ${message}`);
+      printError(`Failed to show pipeline run: ${message}`);
       process.exit(1);
     }
   },

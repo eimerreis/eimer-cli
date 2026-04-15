@@ -1,4 +1,5 @@
 import { defineCommand } from "@bunli/core";
+import { printError, printInfo, printSuccess, withSpinner } from "@scripts/ui";
 import { runJson, runText } from "./comments-utils";
 
 type CreatedPullRequest = {
@@ -26,7 +27,7 @@ const createCommand = defineCommand({
         })).trim();
 
         if (!title) {
-          console.error("Missing PR title. Usage: pr create \"your title\"");
+          printError("Missing PR title. Usage: pr create \"your title\"");
           process.exit(1);
         }
       }
@@ -40,7 +41,7 @@ const createCommand = defineCommand({
         })).trim();
 
         if (!branch) {
-          console.error("Could not determine current git branch.");
+          printError("Could not determine current git branch.");
           process.exit(1);
         }
       }
@@ -48,12 +49,15 @@ const createCommand = defineCommand({
       const repoUrl = (await runText(["git", "remote", "get-url", "origin"])).trim();
       const repoName = parseRepoName(repoUrl);
 
-      const branchPushed = await ensureRemoteBranch(branch);
+      const branchPushed = await withSpinner("Ensuring remote branch exists", () => ensureRemoteBranch(branch), {
+        silentFailure: true,
+        silentSuccess: true,
+      });
       if (branchPushed) {
-        console.log(`Pushed branch '${branch}' to origin.`);
+        printInfo(`Pushed branch '${branch}' to origin.`);
       }
 
-      const pr = await runJson<CreatedPullRequest>([
+      const pr = await withSpinner("Creating pull request", () => runJson<CreatedPullRequest>([
         "az",
         "repos",
         "pr",
@@ -68,14 +72,14 @@ const createCommand = defineCommand({
         "true",
         "--output",
         "json",
-      ]);
+      ]), { silentFailure: true, silentSuccess: true });
 
       const prId = pr.pullRequestId;
       const commitMessage = `Merged PR ${prId}: ${title}`
         .replace('"', "")
         .replace("'", "");
 
-      await runText([
+      await withSpinner("Configuring auto-complete", () => runText([
         "az",
         "repos",
         "pr",
@@ -91,7 +95,7 @@ const createCommand = defineCommand({
         "true",
         "--output",
         "json",
-      ]);
+      ]), { silentFailure: true, silentSuccess: true });
 
       const webUrl = pr._links?.web?.href;
       if (webUrl) {
@@ -112,9 +116,10 @@ const createCommand = defineCommand({
         ]);
       }
 
-      console.log(`Created PR #${prId} for ${repoName} on ${branch}`);
+      printSuccess(`Created PR #${prId} for ${repoName} on ${branch}`);
     } catch (err) {
-      console.error("Failed to create PR:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      printError(`Failed to create PR: ${message}`);
       process.exit(1);
     }
   },

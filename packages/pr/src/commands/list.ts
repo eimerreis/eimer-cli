@@ -1,4 +1,14 @@
 import { defineCommand, option } from "@bunli/core";
+import {
+  createTable,
+  formatRelativeTime,
+  printError,
+  printInfo,
+  renderTable,
+  symbols,
+  terminalLink,
+  withSpinner,
+} from "@scripts/ui";
 import { z } from "zod";
 import { parseGitHubRepo } from "./comments-github";
 import { detectPlatform, runJson, runText } from "./comments-utils";
@@ -74,13 +84,17 @@ const listCommand = defineCommand({
   },
   handler: async ({ flags, prompt }) => {
     try {
-      const remoteUrl = (await runText(["git", "remote", "get-url", "origin"])) .trim();
+      const remoteUrl = (await runText(["git", "remote", "get-url", "origin"])).trim();
       const platform = detectPlatform(remoteUrl);
 
-      const items =
-        platform === "github"
-          ? await listGitHubPrs(remoteUrl, flags.all, flags.reviewer, flags.top)
-          : await listAzurePrs(remoteUrl, flags.all, flags.reviewer, flags.top, prompt);
+      const items = await withSpinner(
+        "Loading pull requests",
+        () =>
+          platform === "github"
+            ? listGitHubPrs(remoteUrl, flags.all, flags.reviewer, flags.top)
+            : listAzurePrs(remoteUrl, flags.all, flags.reviewer, flags.top, prompt),
+        { silentFailure: true },
+      );
 
       if (flags.json) {
         console.log(JSON.stringify(items, null, 2));
@@ -90,7 +104,7 @@ const listCommand = defineCommand({
       printList(items, flags.reviewer, flags.all);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to list pull requests: ${message}`);
+      printError(`Failed to list pull requests: ${message}`);
       process.exit(1);
     }
   },
@@ -340,60 +354,28 @@ function reviewerVoteLabel(vote?: number): string {
   return "NO-VOTE";
 }
 
-function terminalLink(text: string, url: string): string {
-  return `\u001b]8;;${url}\u0007${text}\u001b]8;;\u0007`;
-}
-
 function printList(items: ListItem[], reviewerMode: boolean, allRepos: boolean): void {
   if (items.length === 0) {
     const mode = reviewerMode ? "reviewer" : "author";
     const scope = allRepos ? "all repos" : "current repo";
-    console.log(`No open PRs found for ${mode} mode in ${scope}.`);
+    printInfo(`No open PRs found for ${mode} mode in ${scope}.`, allRepos ? undefined : "Try --all to search across all repos.");
     return;
   }
 
-  for (const item of items) {
-    const reviewPrefix = reviewerMode ? `[${reviewerVoteLabel(item.reviewerVote)}] ` : "";
-    const branch = item.branch ? ` | ${item.branch}` : "";
-    const updatedAt = item.updatedAt ? ` | ${formatRelativeTime(item.updatedAt)}` : "";
-    const line = `${reviewPrefix}#${item.id} ${item.title} | ${item.repository}${branch}${updatedAt}`;
-    console.log(terminalLink(line, item.url));
-  }
-}
+  const rows = items.map((item) => {
+    const reviewState = reviewerMode ? reviewerVoteLabel(item.reviewerVote) : item.platform === "github" ? "GITHUB" : "AZDO";
+    const status = reviewerMode ? `${symbols.pending} ${reviewState}` : `${symbols.info} ${reviewState}`;
+    return [
+      status,
+      terminalLink(`#${item.id}`, item.url),
+      item.title,
+      item.repository,
+      item.branch || "-",
+      item.updatedAt ? formatRelativeTime(item.updatedAt) : "-",
+    ];
+  });
 
-function formatRelativeTime(value: string): string {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) {
-    return value;
-  }
-
-  const deltaSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  if (deltaSeconds < 60) {
-    return "just now";
-  }
-
-  const minutes = Math.floor(deltaSeconds / 60);
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-
-  const days = Math.floor(hours / 24);
-  if (days < 30) {
-    return `${days}d ago`;
-  }
-
-  const months = Math.floor(days / 30);
-  if (months < 12) {
-    return `${months}mo ago`;
-  }
-
-  const years = Math.floor(months / 12);
-  return `${years}y ago`;
+  console.log(renderTable(["State", "PR", "Title", "Repo", "Branch", "Updated"], rows, { wordWrap: true }));
 }
 
 export default listCommand;

@@ -1,3 +1,5 @@
+import { colors, symbols } from "@scripts/ui";
+
 type PipelineRun = {
   id: number;
   status?: string;
@@ -40,6 +42,8 @@ type RepoInfo = {
 
 let azureProjectBaseUrlCache: string | null = null;
 
+type RunState = "running" | "queued" | "succeeded" | "failed" | "canceled" | "unknown";
+
 async function runText(command: string[]): Promise<string> {
   const process = Bun.spawn({
     cmd: command,
@@ -70,81 +74,76 @@ async function runJson<T>(command: string[]): Promise<T> {
   }
 }
 
-function terminalLink(text: string, url: string): string {
-  if (!url) {
-    return text;
-  }
-
-  return `\u001b]8;;${url}\u0007${text}\u001b]8;;\u0007`;
-}
-
-function formatRelativeTime(value?: string): string {
-  if (!value) {
-    return "";
-  }
-
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) {
-    return value;
-  }
-
-  const deltaSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  if (deltaSeconds < 60) {
-    return "just now";
-  }
-
-  const minutes = Math.floor(deltaSeconds / 60);
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-
-  const days = Math.floor(hours / 24);
-  if (days < 30) {
-    return `${days}d ago`;
-  }
-
-  const months = Math.floor(days / 30);
-  if (months < 12) {
-    return `${months}mo ago`;
-  }
-
-  const years = Math.floor(months / 12);
-  return `${years}y ago`;
-}
-
-function getRunIndicator(status?: string, result?: string): string {
+function getRunState(status?: string, result?: string): RunState {
   const normalizedStatus = (status || "").toLowerCase();
   const normalizedResult = (result || "").toLowerCase();
 
   if (normalizedStatus === "inprogress") {
-    return "[RUNNING]";
+    return "running";
   }
 
   if (normalizedStatus === "notstarted") {
-    return "[QUEUED]";
+    return "queued";
   }
 
   if (normalizedStatus === "completed") {
     if (normalizedResult === "succeeded") {
-      return "[OK]";
+      return "succeeded";
     }
+
     if (normalizedResult === "failed") {
-      return "[FAIL]";
+      return "failed";
     }
+
     if (normalizedResult === "canceled") {
-      return "[CANCELED]";
-    }
-    if (normalizedResult) {
-      return `[${normalizedResult.toUpperCase()}]`;
+      return "canceled";
     }
   }
 
-  return `[${(status || "unknown").toUpperCase()}]`;
+  return "unknown";
+}
+
+function getRunIndicator(status?: string, result?: string): string {
+  switch (getRunState(status, result)) {
+    case "running":
+      return symbols.running;
+    case "queued":
+      return symbols.queued;
+    case "succeeded":
+      return symbols.ok;
+    case "failed":
+      return symbols.fail;
+    case "canceled":
+      return symbols.warning;
+    default:
+      return symbols.neutral;
+  }
+}
+
+function formatRunStatus(status?: string, result?: string): string {
+  const normalizedStatus = (status || "").toLowerCase();
+  const normalizedResult = (result || "").toLowerCase();
+
+  switch (getRunState(status, result)) {
+    case "running":
+      return `${symbols.running} ${colors.info("RUNNING")}`;
+    case "queued":
+      return `${symbols.queued} ${colors.dim("QUEUED")}`;
+    case "succeeded":
+      return `${symbols.ok} ${colors.success("SUCCEEDED")}`;
+    case "failed":
+      return `${symbols.fail} ${colors.error("FAILED")}`;
+    case "canceled":
+      return `${symbols.warning} ${colors.warning("CANCELED")}`;
+    default: {
+      const label = normalizedResult
+        ? normalizedResult.toUpperCase()
+        : normalizedStatus
+          ? normalizedStatus.toUpperCase()
+          : "UNKNOWN";
+      return `${symbols.neutral} ${colors.dim(label)}`;
+    }
+  }
 }
 
 function calculateDuration(startTime?: string | null, finishTime?: string | null): string {
@@ -313,7 +312,7 @@ export {
   buildRunMessage,
   buildRunUrl,
   calculateDuration,
-  formatRelativeTime,
+  formatRunStatus,
   getRepoInfo,
   getRunIndicator,
   parseKeyValuePairs,
@@ -323,7 +322,6 @@ export {
   resolveIdArg,
   resolveStringArg,
   stripBranchPrefix,
-  terminalLink,
 };
 
 export type { PipelineDefinition, PipelineRun, RepoInfo };

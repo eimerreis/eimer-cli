@@ -1,13 +1,13 @@
 import { defineCommand, option } from "@bunli/core";
+import { printError, printSuccess, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import {
   buildRunUrl,
+  formatRunStatus,
   getRepoInfo,
-  getRunIndicator,
   parseKeyValuePairs,
   resolveStringArg,
   runJson,
-  terminalLink,
   type PipelineDefinition,
   type PipelineRun,
 } from "./utils";
@@ -43,14 +43,16 @@ const triggerCommand = defineCommand({
   },
   handler: async ({ flags, positional, prompt }) => {
     try {
-      const repoInfo = await getRepoInfo();
+      const repoInfo = await withSpinner("Detecting repository", () => getRepoInfo(), {
+        silentFailure: true,
+        silentSuccess: true,
+      });
       const pipelineName = resolveStringArg(flags.name, positional);
-      const pipeline = await resolvePipeline(
-        flags.id,
-        pipelineName,
-        repoInfo.repositoryFilter,
-        repoInfo.repositoryType,
-        prompt,
+      const pipeline = await withSpinner(
+        "Resolving pipeline",
+        () =>
+          resolvePipeline(flags.id, pipelineName, repoInfo.repositoryFilter, repoInfo.repositoryType, prompt),
+        { silentFailure: true },
       );
 
       const command = [
@@ -79,19 +81,23 @@ const triggerCommand = defineCommand({
         command.push("--variables", ...variables);
       }
 
-      const run = await runJson<PipelineRun>(command);
+      const run = await withSpinner("Queueing pipeline run", () => runJson<PipelineRun>(command), {
+        silentFailure: true,
+      });
 
       if (flags.json) {
         console.log(JSON.stringify(run, null, 2));
         return;
       }
 
-      const indicator = getRunIndicator(run.status, run.result);
-      const line = `${indicator} #${run.id} ${run.definition?.name || pipeline.name || `Pipeline ${pipeline.id}`}`;
-      console.log(terminalLink(line, buildRunUrl(run.id)));
+      const line = `${formatRunStatus(run.status, run.result)} ${terminalLink(
+        `#${run.id}`,
+        buildRunUrl(run.id),
+      )} ${run.definition?.name || pipeline.name || `Pipeline ${pipeline.id}`}`;
+      printSuccess(`Queued pipeline run ${line}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to trigger pipeline: ${message}`);
+      printError(`Failed to trigger pipeline: ${message}`);
       process.exit(1);
     }
   },

@@ -1,3 +1,4 @@
+import { printWarning } from "@scripts/ui";
 import type { AzurePullRequest, AzureThread, NormalizedResult } from "./comments-utils";
 import { AZURE_DEVOPS_RESOURCE, buildLocation, mapAzureStatus, runJson } from "./comments-utils";
 
@@ -118,9 +119,7 @@ async function findAzurePrByBranch(branch: string, repoOverride?: string): Promi
   });
 
   if (sorted.length > 1) {
-    console.error(
-      `Found ${sorted.length} Azure PRs for branch '${branch}'. Using most recent (#${sorted[0].pullRequestId}).`,
-    );
+    printWarning(`Found ${sorted.length} Azure PRs for branch '${branch}'. Using most recent (#${sorted[0].pullRequestId}).`);
   }
 
   return sorted[0];

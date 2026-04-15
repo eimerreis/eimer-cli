@@ -1,6 +1,7 @@
 import { defineCommand, option } from "@bunli/core";
+import { printError, printInfo, printSuccess, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
-import { buildWorkItemUrl, getStateEmoji, resolveIdArg, runJson, terminalLink, tryGetAzureContext } from "./utils";
+import { buildWorkItemUrl, getStateEmoji, resolveIdArg, runJson, tryGetAzureContext } from "./utils";
 
 type UpdatedWorkItem = {
   id: number;
@@ -73,7 +74,10 @@ const closeCommand = defineCommand({
         );
       }
 
-      const updated = await runJson<UpdatedWorkItem>(command);
+      const closeTask = () => runJson<UpdatedWorkItem>(command);
+      const updated = flags.json
+        ? await closeTask()
+        : await withSpinner(`Closing task #${id}`, closeTask, { silentFailure: true, silentSuccess: true });
 
       if (flags.json) {
         console.log(JSON.stringify(updated, null, 2));
@@ -85,10 +89,11 @@ const closeCommand = defineCommand({
       const state = updated.fields["System.State"] || "Closed";
       const title = updated.fields["System.Title"] || "Untitled";
       const line = `${getStateEmoji(state)} #${updated.id} ${title}`;
-      console.log(terminalLink(line, url));
+      printSuccess(`Closed task ${terminalLink(`#${updated.id}`, url)}.`);
+      printInfo(line);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to close task: ${message}`);
+      printError(`Failed to close task: ${message}`);
       process.exit(1);
     }
   },

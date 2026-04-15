@@ -1,3 +1,13 @@
+import {
+  bold,
+  createTable,
+  dim,
+  formatHint,
+  formatRelativeTime,
+  symbols,
+  terminalLink,
+} from "@scripts/ui";
+
 type Platform = "github" | "azure-devops";
 
 type GitHubRepo = {
@@ -157,29 +167,33 @@ function resolveIdArg(flag: number | undefined, positional: string[]): number | 
 }
 
 function printHumanReadable(result: NormalizedResult): void {
-  console.log(
-    `PR #${result.pr.id}: ${JSON.stringify(result.pr.title)} (${result.platform})${
-      result.pr.repository ? ` [${result.pr.repository}]` : ""
-    }`,
-  );
+  const platformLabel = result.platform === "github" ? "GitHub" : "Azure DevOps";
+  console.log(`${bold(`PR #${result.pr.id}`)} ${result.pr.title}`);
+  console.log(dim(`${platformLabel}${result.pr.repository ? ` | ${result.pr.repository}` : ""}`));
 
   if (result.threads.length === 0) {
-    console.log("No review comment threads found.");
+    console.log(`${symbols.info} No review comment threads found.`);
+    console.log(formatHint("Try `pr show` to inspect approval and merge-readiness details."));
     return;
   }
 
   for (const thread of result.threads) {
     console.log("");
-    console.log(`-- ${thread.location} [${thread.status}] --`);
+    const summary = createTable(["Location", "Status", "Updated"], [
+      [thread.location, thread.status, thread.updatedAt ? formatRelativeTime(thread.updatedAt) : "-"],
+    ], { compact: true });
+    console.log(summary.toString());
 
     for (const comment of thread.comments) {
       const lines = normalizeNewlines(comment.body).split("\n").filter(Boolean);
+      const authoredAt = comment.createdAt ? dim(` (${formatRelativeTime(comment.createdAt)})`) : "";
       if (lines.length === 0) {
-        console.log(`  ${comment.author}:`);
+        console.log(`  ${symbols.arrow} ${bold(comment.author)}${authoredAt}`);
         continue;
       }
 
-      console.log(`  ${comment.author}: ${lines[0]}`);
+      console.log(`  ${symbols.arrow} ${bold(comment.author)}${authoredAt}`);
+      console.log(`    ${terminalLink(lines[0], result.pr.url || "")}`);
       for (const line of lines.slice(1)) {
         console.log(`    ${line}`);
       }

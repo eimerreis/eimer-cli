@@ -1,12 +1,11 @@
 import { defineCommand, option } from "@bunli/core";
+import { formatRelativeTime, printError, printInfo, renderTable, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import {
   buildWorkItemUrl,
   extractAssignedTo,
-  formatRelativeTime,
   getStateEmoji,
   runJson,
-  terminalLink,
   tryGetAzureContext,
 } from "./utils";
 
@@ -40,21 +39,27 @@ const recentCommand = defineCommand({
   },
   handler: async ({ flags }) => {
     try {
-      const wiql =
-        "SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo], [System.ChangedDate], [System.WorkItemType] " +
-        "FROM WorkItems WHERE [System.AssignedTo] = @Me AND [System.WorkItemType] = 'Task' ORDER BY [System.ChangedDate] DESC";
+      const loadRows = async () => {
+        const wiql =
+          "SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo], [System.ChangedDate], [System.WorkItemType] " +
+          "FROM WorkItems WHERE [System.AssignedTo] = @Me AND [System.WorkItemType] = 'Task' ORDER BY [System.ChangedDate] DESC";
 
-      const rows = await runJson<WorkItemQueryRow[]>([
-        "az",
-        "boards",
-        "query",
-        "--wiql",
-        wiql,
-        "--detect",
-        "true",
-        "--output",
-        "json",
-      ]);
+        return runJson<WorkItemQueryRow[]>([
+          "az",
+          "boards",
+          "query",
+          "--wiql",
+          wiql,
+          "--detect",
+          "true",
+          "--output",
+          "json",
+        ]);
+      };
+
+      const rows = flags.json
+        ? await loadRows()
+        : await withSpinner("Loading recent tasks", loadRows, { silentFailure: true, silentSuccess: true });
 
       const filtered = flags.all
         ? rows
@@ -71,25 +76,26 @@ const recentCommand = defineCommand({
       }
 
       if (top.length === 0) {
-        console.log("No recent tasks found.");
+        printInfo("No recent tasks found.", flags.all ? undefined : "Try --all to include closed and non-active tasks.");
         return;
       }
 
       const context = await tryGetAzureContext();
-      for (const item of top) {
+      const rowsForTable = top.map((item) => {
         const id = item.fields["System.Id"] || item.id;
         const title = item.fields["System.Title"] || "Untitled";
         const state = item.fields["System.State"] || "Unknown";
         const assignedTo = extractAssignedTo(item.fields["System.AssignedTo"]);
         const changed = formatRelativeTime(item.fields["System.ChangedDate"]);
-        const changedSuffix = changed ? ` | ${changed}` : "";
         const url = buildWorkItemUrl(id, context);
-        const line = `${getStateEmoji(state)} #${id} ${title} | ${assignedTo}${changedSuffix}`;
-        console.log(terminalLink(line, url));
-      }
+
+        return [getStateEmoji(state), terminalLink(`#${id}`, url), title, assignedTo, changed || "-"];
+      });
+
+      console.log(renderTable(["State", "Task", "Title", "Assigned", "Updated"], rowsForTable, { wordWrap: true }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to list recent tasks: ${message}`);
+      printError(`Failed to list recent tasks: ${message}`);
       process.exit(1);
     }
   },

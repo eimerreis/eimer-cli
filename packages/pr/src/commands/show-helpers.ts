@@ -1,3 +1,5 @@
+import { bold, dim, printInfo, symbols, terminalLink } from "@scripts/ui";
+
 type CheckStatus = "pass" | "fail" | "pending" | "unknown";
 
 type ShowReason = {
@@ -398,45 +400,42 @@ function stripAzureRefPrefix(branch?: string): string {
 }
 
 function printShowResult(result: ShowResult): void {
-  console.log(`PR #${result.pr.id}: ${result.pr.title}`);
-  console.log(`Platform: ${result.platform}`);
-  console.log(`Repository: ${result.pr.repository}`);
+  console.log(`${bold(`PR #${result.pr.id}`)} ${result.pr.title}`);
+  console.log(dim(`${result.platform} | ${result.pr.repository}`));
   if (result.pr.branch || result.pr.targetBranch) {
     console.log(`Branch: ${result.pr.branch || "?"} -> ${result.pr.targetBranch || "?"}`);
   }
   if (result.pr.url) {
-    console.log(`URL: ${result.pr.url}`);
+    console.log(`URL: ${terminalLink(result.pr.url, result.pr.url)}`);
   }
 
-  console.log(
-    `Comments: ${result.comments.hasComments ? "YES" : "NO"} (${result.comments.commentCount} comments in ${result.comments.threadCount} threads)`,
-  );
-  console.log(`Approved: ${result.approval.approved ? "YES" : "NO"} (${result.approval.summary})`);
-  console.log(
-    `Checks: ${result.checks.status.toUpperCase()} (${result.checks.passed} passed, ${result.checks.failed} failed, ${result.checks.pending} pending)`,
-  );
+  console.log(`Comments: ${result.comments.hasComments ? `${symbols.ok} yes` : `${symbols.neutral} no`} (${result.comments.commentCount} comments in ${result.comments.threadCount} threads)`);
+  console.log(`Approved: ${result.approval.approved ? `${symbols.ok} yes` : `${symbols.fail} no`} (${result.approval.summary})`);
+  console.log(`Checks: ${result.checks.status.toUpperCase()} (${result.checks.passed} passed, ${result.checks.failed} failed, ${result.checks.pending} pending)`);
 
   if (result.checks.details.length > 0) {
     const nonPassing = result.checks.details.filter((item) => item.status !== "pass");
     if (nonPassing.length > 0) {
       console.log("Check details:");
       for (const check of nonPassing) {
-        console.log(`- ${check.status.toUpperCase()}: ${check.name}${check.url ? ` | ${check.url}` : ""}`);
+        const marker = check.status === "fail" ? symbols.fail : check.status === "pending" ? symbols.pending : symbols.neutral;
+        const link = check.url ? ` | ${terminalLink(check.url, check.url)}` : "";
+        console.log(`${marker} ${check.status.toUpperCase()}: ${check.name}${link}`);
       }
     }
   }
 
   if (result.readyToMerge) {
-    console.log("Ready to merge: YES");
+    printInfo("Ready to merge: yes");
     return;
   }
 
-  console.log("Ready to merge: NO");
+  console.log(`${symbols.fail} Ready to merge: no`);
   console.log("Why not ready:");
   for (const reason of result.notReadyReasons) {
     const detailsSuffix = reason.details ? ` (${reason.details})` : "";
-    const urlSuffix = reason.url ? ` | ${reason.url}` : "";
-    console.log(`- ${reason.summary}${detailsSuffix}${urlSuffix}`);
+    const urlSuffix = reason.url ? ` | ${terminalLink(reason.url, reason.url)}` : "";
+    console.log(`${symbols.arrow} ${reason.summary}${detailsSuffix}${urlSuffix}`);
   }
 }
 

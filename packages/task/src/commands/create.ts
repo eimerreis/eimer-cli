@@ -1,4 +1,5 @@
 import { defineCommand, option } from "@bunli/core";
+import { printError, printInfo, printSuccess, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import {
   buildWorkItemUrl,
@@ -8,7 +9,6 @@ import {
   getStateEmoji,
   loadCurrentIterationByTeam,
   runJson,
-  terminalLink,
   tryGetAzureContext,
 } from "./utils";
 
@@ -67,7 +67,7 @@ const createCommand = defineCommand({
       }
 
       if (!title) {
-        throw new Error("Missing task title. Usage: task create \"your title\"");
+        throw new Error("Missing task title. Usage: task create \"your title\". Pass a title or answer the interactive prompt.");
       }
 
       const iterationPath = await resolveCurrentIterationPath(flags.team, defaultTeam, prompt);
@@ -107,26 +107,39 @@ const createCommand = defineCommand({
         command.push("--fields", ...fieldPairs);
       }
 
-      const created = await runJson<CreatedWorkItem>(command);
+      const createTask = () => runJson<CreatedWorkItem>(command);
+      const created = flags.json
+        ? await createTask()
+        : await withSpinner("Creating task", createTask, { silentFailure: true, silentSuccess: true });
 
       if (flags.parent) {
-        await runJson<unknown>([
-          "az",
-          "boards",
-          "work-item",
-          "relation",
-          "add",
-          "--id",
-          String(created.id),
-          "--relation-type",
-          "parent",
-          "--target-id",
-          String(flags.parent),
-          "--detect",
-          "true",
-          "--output",
-          "json",
-        ]);
+        const linkParent = () =>
+          runJson<unknown>([
+            "az",
+            "boards",
+            "work-item",
+            "relation",
+            "add",
+            "--id",
+            String(created.id),
+            "--relation-type",
+            "parent",
+            "--target-id",
+            String(flags.parent),
+            "--detect",
+            "true",
+            "--output",
+            "json",
+          ]);
+
+        if (flags.json) {
+          await linkParent();
+        } else {
+          await withSpinner(`Linking task #${created.id} to parent #${flags.parent}`, linkParent, {
+            silentFailure: true,
+            silentSuccess: true,
+          });
+        }
       }
 
       if (flags.json) {
@@ -140,10 +153,11 @@ const createCommand = defineCommand({
       const titleText = created.fields["System.Title"] || title;
       const assignedTo = extractAssignedTo(created.fields["System.AssignedTo"]);
       const linkText = `${getStateEmoji(state)} #${created.id} ${titleText} | ${assignedTo}`;
-      console.log(terminalLink(linkText, url));
+      printSuccess(`Created task ${terminalLink(`#${created.id}`, url)}.`);
+      printInfo(linkText, flags.parent ? `Linked to parent #${flags.parent}.` : undefined);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to create task: ${message}`);
+      printError(`Failed to create task: ${message}`, "Check your Azure DevOps defaults with `eimer configure --show` or pass explicit task options.");
       process.exit(1);
     }
   },
@@ -213,7 +227,7 @@ async function resolveCurrentIterationPath(
   }
 
   if (teamOverride?.trim()) {
-    throw new Error(`No active iteration found for team '${team}'.`);
+    throw new Error(`No active iteration found for team '${team}'. Confirm the team name or re-run with a different --team value.`);
   }
 
   const promptedTeam = (
@@ -225,12 +239,12 @@ async function resolveCurrentIterationPath(
   ).trim();
 
   if (!promptedTeam) {
-    throw new Error(`No active iteration found for default team '${defaultTeam}'. Pass --team to override.`);
+    throw new Error(`No active iteration found for default team '${defaultTeam}'. Pass --team to override or update your defaults with 'eimer configure'.`);
   }
 
   const promptedIteration = await loadCurrentIterationByTeam(promptedTeam);
   if (!promptedIteration) {
-    throw new Error(`No active iteration found for team '${promptedTeam}'.`);
+    throw new Error(`No active iteration found for team '${promptedTeam}'. Confirm the team exists and has a current sprint configured.`);
   }
 
   return promptedIteration;

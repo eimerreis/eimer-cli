@@ -1,4 +1,5 @@
 import { defineCommand, option } from "@bunli/core";
+import { printError, printInfo, printSuccess, withSpinner } from "@scripts/ui";
 import { findAzurePrByBranch, findAzurePrById } from "./comments-azdo";
 import { findGitHubPrByBranch, findGitHubPrById, parseGitHubRepo } from "./comments-github";
 import { detectPlatform, resolveIdArg, runText } from "./comments-utils";
@@ -40,20 +41,26 @@ const openCommand = defineCommand({
         })).trim();
 
         if (!branch) {
-          console.error("Could not determine branch. Pass [id], --branch, or --id.");
+          printError("Could not determine branch. Pass [id], --branch, or --id.", "Run from a checked out branch or pass --branch explicitly.");
           process.exit(1);
         }
       }
 
       if (platform === "github") {
-        await openGitHubPr(remoteUrl, branch, prId, flags.repo);
+        await withSpinner("Opening GitHub pull request", () => openGitHubPr(remoteUrl, branch, prId, flags.repo), {
+          silentFailure: true,
+          silentSuccess: true,
+        });
         return;
       }
 
-      await openAzurePr(branch, prId, flags.repo);
+      await withSpinner("Opening Azure DevOps pull request", () => openAzurePr(branch, prId, flags.repo), {
+        silentFailure: true,
+        silentSuccess: true,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to open PR: ${message}`);
+      printError(`Failed to open PR: ${message}`, "Make sure your browser opener is available and your GitHub or Azure CLI session is authenticated.");
       process.exit(1);
     }
   },
@@ -72,17 +79,17 @@ async function openGitHubPr(
     : await tryFindGitHubPrByBranch(repo, branch);
 
   if (!pr) {
-    console.log(`No pull request found for branch '${branch}'.`);
+    printInfo(`No pull request found for branch '${branch}'.`, "Try `pr list --all` or pass --id to open a specific PR.");
     return;
   }
 
   if (!pr.html_url) {
-    console.error(`Found PR #${pr.number} but could not determine a web URL.`);
+    printError(`Found PR #${pr.number} but could not determine a web URL.`);
     process.exit(1);
   }
 
   await runText(["open", pr.html_url]);
-  console.log(`Opened PR #${pr.number}: ${pr.title}`);
+  printSuccess(`Opened PR #${pr.number}: ${pr.title}`);
 }
 
 async function openAzurePr(branch: string, providedPrId?: number, repoOverride?: string): Promise<void> {
@@ -91,7 +98,7 @@ async function openAzurePr(branch: string, providedPrId?: number, repoOverride?:
     : await tryFindAzurePrByBranch(branch, repoOverride);
 
   if (!pr) {
-    console.log(`No pull request found for branch '${branch}'.`);
+    printInfo(`No pull request found for branch '${branch}'.`, "Try `pr list --all` or pass --id to open a specific PR.");
     return;
   }
 
@@ -109,7 +116,7 @@ async function openAzurePr(branch: string, providedPrId?: number, repoOverride?:
     "none",
   ]);
 
-  console.log(`Opened PR #${pr.pullRequestId}: ${pr.title}`);
+  printSuccess(`Opened PR #${pr.pullRequestId}: ${pr.title}`);
 }
 
 async function tryFindGitHubPrByBranch(remote: { owner: string; name: string }, branch: string) {

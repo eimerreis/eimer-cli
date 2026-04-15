@@ -1,14 +1,13 @@
 import { defineCommand, option } from "@bunli/core";
+import { bold, formatRelativeTime, printError, printInfo, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import {
   buildWorkItemUrl,
   extractAssignedTo,
   extractParentId,
-  formatRelativeTime,
   getStateEmoji,
   resolveIdArg,
   runJson,
-  terminalLink,
   tryGetAzureContext,
   type WorkItem,
 } from "./utils";
@@ -67,7 +66,10 @@ const showCommand = defineCommand({
         throw new Error("Missing task ID. Usage: task show [id]");
       }
 
-      const chain = flags.parents ? await loadParentChain(id) : [await loadWorkItem(id)];
+      const loadChain = () => (flags.parents ? loadParentChain(id) : Promise.all([loadWorkItem(id)]));
+      const chain = flags.json
+        ? await loadChain()
+        : await withSpinner("Loading task details", loadChain, { silentFailure: true, silentSuccess: true });
       const root = chain[0];
 
       if (!flags["allow-non-task"] && root && root.type.toLowerCase() !== "task") {
@@ -81,10 +83,10 @@ const showCommand = defineCommand({
         return;
       }
 
-      printHierarchy(chain);
+      await printHierarchy(chain);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to show task: ${message}`);
+      printError(`Failed to show task: ${message}`);
       process.exit(1);
     }
   },
@@ -144,11 +146,14 @@ async function loadParentChain(id: number): Promise<ShowNode[]> {
 
 async function printHierarchy(chain: ShowNode[]): Promise<void> {
   if (chain.length === 0) {
-    console.log("No task data found.");
+    printInfo("No task data found.");
     return;
   }
 
   const context = await tryGetAzureContext();
+  const root = chain[0];
+  console.log(`${bold("Task")}: ${terminalLink(`#${root.id}`, buildWorkItemUrl(root.id, context))}`);
+
   for (let index = 0; index < chain.length; index += 1) {
     const item = chain[index];
     const indent = "  ".repeat(index);

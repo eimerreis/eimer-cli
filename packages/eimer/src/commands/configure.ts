@@ -1,5 +1,6 @@
 import { defineCommand, option } from "@bunli/core";
 import { deleteConfig, getConfigPath, loadConfig, saveConfig, withHomePath, type EimerConfig } from "@scripts/config";
+import { printError, printSuccess } from "@scripts/ui";
 import { z } from "zod";
 
 const configurableKeys = [
@@ -38,7 +39,7 @@ const configureCommand = defineCommand({
 
       if (flags.reset) {
         await deleteConfig();
-        console.log(`Deleted config at ${path}.`);
+        printSuccess(`Deleted config at ${path}.`);
         return;
       }
 
@@ -51,17 +52,17 @@ const configureCommand = defineCommand({
       if (flags.key) {
         const next = setConfigValue(await loadConfig(), flags.key, flags.value?.trim() || "");
         await saveConfig(next);
-        console.log(`Updated ${flags.key} in ${path}.`);
+        printSuccess(`Updated ${flags.key} in ${path}.`);
         return;
       }
 
       const current = await loadConfig();
       const next = await promptForConfig(current, prompt);
       await saveConfig(next);
-      console.log(`Saved config to ${path}.`);
+      printSuccess(`Saved config to ${path}.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to configure eimer: ${message}`);
+      printError(`Failed to configure eimer: ${message}`, "Try `eimer configure --show` to inspect the current config before changing values.");
       process.exit(1);
     }
   },

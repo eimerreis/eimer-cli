@@ -1,4 +1,5 @@
 import { defineCommand, option } from "@bunli/core";
+import { printError, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import { loadAzureComments } from "./comments-azdo";
 import { loadGitHubComments } from "./comments-github";
@@ -44,15 +45,19 @@ const commentsCommand = defineCommand({
         })).trim();
 
         if (!branch) {
-          console.error("Could not determine branch. Pass [id], --branch, or --id.");
+          printError("Could not determine branch. Pass [id], --branch, or --id.", "Run from a checked out branch or pass --branch explicitly.");
           process.exit(1);
         }
       }
 
-      const result =
-        platform === "github"
-          ? await loadGitHubComments(remoteUrl, branch, prId, flags.repo)
-          : await loadAzureComments(branch, prId, flags.repo);
+      const result = await withSpinner(
+        "Loading review comments",
+        () =>
+          platform === "github"
+            ? loadGitHubComments(remoteUrl, branch, prId, flags.repo)
+            : loadAzureComments(branch, prId, flags.repo),
+        { silentFailure: true },
+      );
 
       if (flags.json) {
         console.log(JSON.stringify(result, null, 2));
@@ -62,7 +67,7 @@ const commentsCommand = defineCommand({
       printHumanReadable(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to list PR comments: ${message}`);
+      printError(`Failed to list PR comments: ${message}`, "Check your PR lookup inputs and make sure `gh` or `az` is authenticated.");
       process.exit(1);
     }
   },

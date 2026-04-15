@@ -1,3 +1,4 @@
+import { printWarning } from "@scripts/ui";
 import type {
   GitHubPullRequest,
   GitHubRepo,
@@ -88,7 +89,7 @@ async function findGitHubPrByBranch(repo: GitHubRepo, branch: string): Promise<G
   }
 
   if (prs.length > 1) {
-    console.error(`Found ${prs.length} PRs for branch '${branch}'. Using the first result (#${prs[0].number}).`);
+    printWarning(`Found ${prs.length} PRs for branch '${branch}'. Using the first result (#${prs[0].number}).`);
   }
 
   return prs[0];

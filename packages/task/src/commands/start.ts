@@ -1,6 +1,7 @@
 import { defineCommand, option } from "@bunli/core";
+import { printError, printInfo, printSuccess, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
-import { buildWorkItemUrl, getStateEmoji, resolveIdArg, runJson, terminalLink, tryGetAzureContext } from "./utils";
+import { buildWorkItemUrl, getStateEmoji, resolveIdArg, runJson, tryGetAzureContext } from "./utils";
 
 type UpdatedWorkItem = {
   id: number;
@@ -46,20 +47,24 @@ const startCommand = defineCommand({
         throw new Error("Missing task ID. Usage: task start [id]");
       }
 
-      const updated = await runJson<UpdatedWorkItem>([
-        "az",
-        "boards",
-        "work-item",
-        "update",
-        "--id",
-        String(id),
-        "--state",
-        "Active",
-        "--detect",
-        "true",
-        "--output",
-        "json",
-      ]);
+      const startTask = () =>
+        runJson<UpdatedWorkItem>([
+          "az",
+          "boards",
+          "work-item",
+          "update",
+          "--id",
+          String(id),
+          "--state",
+          "Active",
+          "--detect",
+          "true",
+          "--output",
+          "json",
+        ]);
+      const updated = flags.json
+        ? await startTask()
+        : await withSpinner(`Starting task #${id}`, startTask, { silentFailure: true, silentSuccess: true });
 
       if (flags.json) {
         console.log(JSON.stringify(updated, null, 2));
@@ -71,10 +76,11 @@ const startCommand = defineCommand({
       const state = updated.fields["System.State"] || "Active";
       const title = updated.fields["System.Title"] || "Untitled";
       const line = `${getStateEmoji(state)} #${updated.id} ${title}`;
-      console.log(terminalLink(line, url));
+      printSuccess(`Started task ${terminalLink(`#${updated.id}`, url)}.`);
+      printInfo(line);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to start task: ${message}`);
+      printError(`Failed to start task: ${message}`);
       process.exit(1);
     }
   },

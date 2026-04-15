@@ -1,3 +1,4 @@
+import { colors, symbols } from "@scripts/ui";
 import { loadConfig } from "@scripts/config";
 
 type WorkItemIdentity = {
@@ -118,23 +119,30 @@ async function loadCurrentIterationByTeam(team?: string): Promise<string | null>
 }
 
 function getStateEmoji(state: string): string {
-  if (state === "Active") {
-    return "[ACTIVE]";
+  const normalized = state.trim() || "Unknown";
+  const lower = normalized.toLowerCase();
+
+  if (lower === "active") {
+    return `${symbols.running} ${colors.info(normalized)}`;
   }
 
-  if (state === "Resolved") {
-    return "[RESOLVED]";
+  if (lower === "resolved") {
+    return `${symbols.pending} ${colors.warning(normalized)}`;
   }
 
-  if (state === "Not Started") {
-    return "[NOT-STARTED]";
+  if (lower === "not started" || lower === "new") {
+    return `${symbols.queued} ${colors.dim(normalized)}`;
   }
 
-  if (state === "Closed") {
-    return "[CLOSED]";
+  if (lower === "closed" || lower === "done") {
+    return `${symbols.ok} ${colors.success(normalized)}`;
   }
 
-  return `[${state.toUpperCase()}]`;
+  if (lower === "removed") {
+    return `${symbols.fail} ${colors.error(normalized)}`;
+  }
+
+  return `${symbols.neutral} ${colors.dim(normalized)}`;
 }
 
 function extractAssignedTo(value: WorkItem["fields"]["System.AssignedTo"]): string {
@@ -197,53 +205,6 @@ function buildWorkItemUrl(id: number, context: AzureContext | null): string {
   return `${context.baseUrl}/_workitems/edit/${id}`;
 }
 
-function terminalLink(text: string, url: string): string {
-  if (!url) {
-    return text;
-  }
-
-  return `\u001b]8;;${url}\u0007${text}\u001b]8;;\u0007`;
-}
-
-function formatRelativeTime(value?: string): string {
-  if (!value) {
-    return "";
-  }
-
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) {
-    return value;
-  }
-
-  const deltaSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  if (deltaSeconds < 60) {
-    return "just now";
-  }
-
-  const minutes = Math.floor(deltaSeconds / 60);
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-
-  const days = Math.floor(hours / 24);
-  if (days < 30) {
-    return `${days}d ago`;
-  }
-
-  const months = Math.floor(days / 30);
-  if (months < 12) {
-    return `${months}mo ago`;
-  }
-
-  const years = Math.floor(months / 12);
-  return `${years}y ago`;
-}
-
 function extractParentId(relations?: WorkItemRelation[]): number | null {
   const parentRelation = (relations || []).find((relation) =>
     relation.rel?.toLowerCase().includes("hierarchy-reverse"),
@@ -287,7 +248,6 @@ export {
   buildWorkItemUrl,
   extractAssignedTo,
   extractParentId,
-  formatRelativeTime,
   getDefaultAreaPath,
   getDefaultTeam,
   getStateEmoji,
@@ -295,7 +255,6 @@ export {
   runJson,
   runText,
   resolveIdArg,
-  terminalLink,
   tryGetAzureContext,
 };
 

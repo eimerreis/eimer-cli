@@ -1,4 +1,5 @@
 import { defineCommand, option } from "@bunli/core";
+import { printError, printInfo, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import { findAzurePrByBranch, findAzurePrById, loadAzureComments } from "./comments-azdo";
 import { findGitHubPrByBranch, findGitHubPrById, loadGitHubComments, parseGitHubRepo } from "./comments-github";
@@ -63,18 +64,22 @@ const showCommand = defineCommand({
         ).trim();
 
         if (!branch) {
-          console.error("Could not determine branch. Pass [id], --branch, or --id.");
+          printError("Could not determine branch. Pass [id], --branch, or --id.", "Run from a checked out branch or pass --branch explicitly.");
           process.exit(1);
         }
       }
 
-      const result =
-        platform === "github"
-          ? await showGitHubPr(remoteUrl, branch, prId, flags.repo)
-          : await showAzurePr(remoteUrl, branch, prId, flags.repo);
+      const result = await withSpinner(
+        "Loading pull request details",
+        () =>
+          platform === "github"
+            ? showGitHubPr(remoteUrl, branch, prId, flags.repo)
+            : showAzurePr(remoteUrl, branch, prId, flags.repo),
+        { silentFailure: true },
+      );
 
       if (!result) {
-        console.log(`No pull request found for branch '${branch}'.`);
+        printInfo(`No pull request found for branch '${branch}'.`, "Try `pr list --all` or pass --id / --repo to target a different PR.");
         return;
       }
 
@@ -86,7 +91,7 @@ const showCommand = defineCommand({
       printShowResult(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to show PR: ${message}`);
+      printError(`Failed to show PR: ${message}`, "Check your git remote and authenticate with `gh auth status` or `az login`.");
       process.exit(1);
     }
   },

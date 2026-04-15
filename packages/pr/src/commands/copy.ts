@@ -1,4 +1,5 @@
 import { defineCommand, option } from "@bunli/core";
+import { printError, printInfo, printSuccess, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import { findAzurePrByBranch, findAzurePrById } from "./comments-azdo";
 import { findGitHubPrByBranch, findGitHubPrById, parseGitHubRepo } from "./comments-github";
@@ -57,19 +58,26 @@ const copyCommand = defineCommand({
         }
       }
 
-      const target =
-        platform === "github"
-          ? await resolveGitHubTarget(remoteUrl, branch, prId, flags.repo)
-          : await resolveAzureTarget(remoteUrl, branch, prId, flags.repo);
+      const target = await withSpinner(
+        "Resolving pull request",
+        () =>
+          platform === "github"
+            ? resolveGitHubTarget(remoteUrl, branch, prId, flags.repo)
+            : resolveAzureTarget(remoteUrl, branch, prId, flags.repo),
+        { silentFailure: true, silentSuccess: true },
+      );
 
       if (!target) {
         const lookup = prId ? `ID '${prId}'` : `branch '${branch}'`;
-        console.log(`No pull request found for ${lookup}.`);
+        printInfo(`No pull request found for ${lookup}.`);
         return;
       }
 
       const markdown = `[Pull Request ${target.id}: ${target.title}](${target.url})`;
-      await copyToClipboard(markdown);
+      await withSpinner("Copying pull request link", () => copyToClipboard(markdown), {
+        silentFailure: true,
+        silentSuccess: true,
+      });
 
       if (flags.json) {
         console.log(
@@ -86,10 +94,10 @@ const copyCommand = defineCommand({
         return;
       }
 
-      console.log(`Copied to clipboard: ${markdown}`);
+      printSuccess(`Copied to clipboard: ${markdown}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to copy PR link: ${message}`);
+      printError(`Failed to copy PR link: ${message}`);
       process.exit(1);
     }
   },

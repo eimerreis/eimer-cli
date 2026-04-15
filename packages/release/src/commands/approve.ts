@@ -1,4 +1,5 @@
 import { defineCommand, option } from "@bunli/core";
+import { printError, printInfo, printSuccess, renderTable, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import {
   buildRunUrl,
@@ -40,11 +41,17 @@ const approveCommand = defineCommand({
   handler: async ({ flags, positional, prompt }) => {
     try {
       const runId = resolveIdArg(flags.run, positional);
-      const context = await getAzureContext();
-      const pending = await loadPendingApprovals(context);
+      const context = await withSpinner("Loading Azure DevOps context", () => getAzureContext(), {
+        silentFailure: true,
+        silentSuccess: true,
+      });
+      const pending = await withSpinner("Loading pending approvals", () => loadPendingApprovals(context), {
+        silentFailure: true,
+        silentSuccess: true,
+      });
 
       if (pending.length === 0) {
-        console.log("No pending approvals.");
+        printInfo("No pending approvals.", "Try `release changelog` if you were expecting a newly deployed release.");
         return;
       }
 
@@ -69,19 +76,22 @@ const approveCommand = defineCommand({
       });
 
       if (filtered.length === 0) {
-        console.log("No pending approvals match the provided filters.");
+        printInfo("No pending approvals match the provided filters.", "Check --pipeline / --run values or retry without filters.");
         return;
       }
 
       const selectedIds = await selectApprovalIds(filtered, flags.all, prompt);
       if (selectedIds.length === 0) {
-        console.log("No approval selected.");
+        printInfo("No approval selected.");
         return;
       }
 
       const comment = (flags.comment || "").trim();
       const finalComment = comment || "Approved via release CLI";
-      const approved = await approveApprovals(context, selectedIds, finalComment);
+      const approved = await withSpinner("Approving selected items", () => approveApprovals(context, selectedIds, finalComment), {
+        silentFailure: true,
+        silentSuccess: true,
+      });
 
       if (flags.json) {
         console.log(
@@ -101,22 +111,19 @@ const approveCommand = defineCommand({
       }
 
       for (const item of approved) {
-        const runId = item.pipeline?.owner?.id;
+        const selectedRunId = item.pipeline?.owner?.id;
         const pipelineName = item.pipeline?.name || "Unknown pipeline";
-        const line = `Approved ${item.id} | ${pipelineName}${runId ? ` | run #${runId}` : ""}`;
-        if (runId) {
-          console.log(`${line} | ${buildRunUrl(context, runId)}`);
-        } else {
-          console.log(line);
-        }
+        const target = selectedRunId ? terminalLink(`run #${selectedRunId}`, buildRunUrl(context, selectedRunId)) : "-";
+        console.log(renderTable(["Approval", "Pipeline", "Run"], [[item.id, pipelineName, target]], { compact: true }));
+        printSuccess(`Approved ${item.id}`);
       }
 
       if (approved.length === 0) {
-        console.log("Approval call returned no updated approvals.");
+        printInfo("Approval call returned no updated approvals.");
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to approve: ${message}`);
+      printError(`Failed to approve: ${message}`, "Make sure Azure CLI is authenticated and your approval filters match pending items.");
       process.exit(1);
     }
   },
@@ -140,15 +147,16 @@ async function selectApprovalIds(
     return approvals.map((item) => item.id);
   }
 
-  const lines = approvals.slice(0, 20).map((item) => {
+  const rows = approvals.slice(0, 20).map((item) => {
     const runId = item.pipeline?.owner?.id;
     const pipelineName = item.pipeline?.name || "Unknown pipeline";
     const created = item.createdOn ? new Date(item.createdOn).toISOString() : "unknown-time";
-    return `${item.id} | ${pipelineName}${runId ? ` | run #${runId}` : ""} | ${created}`;
+    return [item.id, pipelineName, runId ? `#${runId}` : "-", created];
   });
+  const table = renderTable(["Approval", "Pipeline", "Run", "Created"], rows, { compact: true });
 
   const selectedRaw = (
-    await prompt.text(`Approval IDs to approve (comma-separated):\n${lines.join("\n")}`, {
+    await prompt.text(`Approval IDs to approve (comma-separated):\n${table}`, {
       placeholder: approvals[0]?.id || "",
       fallbackValue: "",
       validate: (value) => (value.trim().length > 0 ? true : "At least one approval ID is required"),
