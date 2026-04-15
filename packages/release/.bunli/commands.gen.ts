@@ -6,14 +6,16 @@ import { createGeneratedHelpers, registerGeneratedStore } from '@bunli/core'
 
 import Approve from '../src/commands/approve.js'
 import Changelog from '../src/commands/changelog.js'
+import Configure from '../src/commands/configure.js'
 
 // Narrow list of command names to avoid typeof-cycles in types
-const names = ['approve', 'changelog'] as const
+const names = ['approve', 'changelog', 'configure'] as const
 type GeneratedNames = typeof names[number]
 
 const modules: Record<GeneratedNames, Command<any>> = {
   'approve': Approve,
-  'changelog': Changelog
+  'changelog': Changelog,
+  'configure': Configure
 } as const
 
 const metadata: Record<GeneratedNames, GeneratedCommandMeta> = {
@@ -24,9 +26,9 @@ const metadata: Record<GeneratedNames, GeneratedCommandMeta> = {
         'pipeline': { type: 'z.string.trim.optional', required: false, hasDefault: false, description: 'Pipeline name filter', short: 'p', schema: {"type":"zod","method":"optional","args":[]}, validator: '(val) => true' },
         'run': { type: 'z.coerce.number.int.positive.optional', required: false, hasDefault: false, description: 'Run ID filter', short: 'r', schema: {"type":"zod","method":"optional","args":[]}, validator: '(val) => true' },
         'id': { type: 'z.string.trim.optional', required: false, hasDefault: false, description: 'Approval ID', short: 'i', schema: {"type":"zod","method":"optional","args":[]}, validator: '(val) => true' },
-        'all': { type: 'z.coerce.boolean.default', required: true, hasDefault: true, default: false, description: 'Approve all matched approvals', short: 'a', schema: {"type":"zod","method":"default","args":[{"type":"unknown","raw":{"type":"BooleanLiteral","start":794,"end":799,"loc":{"start":{"line":27,"column":43,"index":794},"end":{"line":27,"column":48,"index":799}},"value":false}}]}, validator: '(val) => true' },
+        'all': { type: 'z.coerce.boolean.default', required: true, hasDefault: true, default: false, description: 'Approve all matched approvals', short: 'a', schema: {"type":"zod","method":"default","args":[{"type":"unknown","raw":{"type":"BooleanLiteral","start":901,"end":906,"loc":{"start":{"line":28,"column":43,"index":901},"end":{"line":28,"column":48,"index":906}},"value":false}}]}, validator: '(val) => true' },
         'comment': { type: 'z.string.trim.optional', required: false, hasDefault: false, description: 'Approval comment', short: 'c', schema: {"type":"zod","method":"optional","args":[]}, validator: '(val) => true' },
-        'json': { type: 'z.coerce.boolean.default', required: true, hasDefault: true, default: false, description: 'Print machine-readable JSON', short: 'j', schema: {"type":"zod","method":"default","args":[{"type":"unknown","raw":{"type":"BooleanLiteral","start":1043,"end":1048,"loc":{"start":{"line":35,"column":44,"index":1043},"end":{"line":35,"column":49,"index":1048}},"value":false}}]}, validator: '(val) => true' }
+        'json': { type: 'z.coerce.boolean.default', required: true, hasDefault: true, default: false, description: 'Print machine-readable JSON', short: 'j', schema: {"type":"zod","method":"default","args":[{"type":"unknown","raw":{"type":"BooleanLiteral","start":1150,"end":1155,"loc":{"start":{"line":36,"column":44,"index":1150},"end":{"line":36,"column":49,"index":1155}},"value":false}}]}, validator: '(val) => true' }
       },
       path: './src/commands/approve'
     },
@@ -38,11 +40,20 @@ const metadata: Record<GeneratedNames, GeneratedCommandMeta> = {
         'from': { type: 'z.coerce.number.int.positive.optional', required: false, hasDefault: false, description: 'From run ID override (defaults to latest prod-success run on master)', short: 'f', schema: {"type":"zod","method":"optional","args":[]}, validator: '(val) => true' },
         'to': { type: 'z.string.trim.optional', required: false, hasDefault: false, description: 'To commit SHA override (default: latest successful master pipeline run)', short: 't', schema: {"type":"zod","method":"optional","args":[]}, validator: '(val) => true' },
         'area': { type: 'z.string.trim.optional', required: false, hasDefault: false, description: 'Area filter from predefined configs', short: 'a', schema: {"type":"zod","method":"optional","args":[]}, validator: '(val) => true' },
-        'no-copy': { type: 'z.coerce.boolean.default', required: true, hasDefault: true, default: false, description: 'Print only, do not copy changelog to clipboard', schema: {"type":"zod","method":"default","args":[{"type":"unknown","raw":{"type":"BooleanLiteral","start":1581,"end":1586,"loc":{"start":{"line":50,"column":49,"index":1581},"end":{"line":50,"column":54,"index":1586}},"value":false}}]}, validator: '(val) => true' },
+        'no-copy': { type: 'z.coerce.boolean.default', required: true, hasDefault: true, default: false, description: 'Print only, do not copy changelog to clipboard', schema: {"type":"zod","method":"default","args":[{"type":"unknown","raw":{"type":"BooleanLiteral","start":1754,"end":1759,"loc":{"start":{"line":52,"column":49,"index":1754},"end":{"line":52,"column":54,"index":1759}},"value":false}}]}, validator: '(val) => true' },
         'post-webhook': { type: 'z.string.trim.optional', required: false, hasDefault: false, description: 'Post changelog to Microsoft Teams incoming webhook URL', schema: {"type":"zod","method":"optional","args":[]}, validator: '(val) => true' },
-        'json': { type: 'z.coerce.boolean.default', required: true, hasDefault: true, default: false, description: 'Print machine-readable JSON', short: 'j', schema: {"type":"zod","method":"default","args":[{"type":"unknown","raw":{"type":"BooleanLiteral","start":1856,"end":1861,"loc":{"start":{"line":56,"column":44,"index":1856},"end":{"line":56,"column":49,"index":1861}},"value":false}}]}, validator: '(val) => true' }
+        'channel': { type: 'z.string.trim.optional', required: false, hasDefault: false, description: 'Named Teams channel from release config', schema: {"type":"zod","method":"optional","args":[]}, validator: '(val) => true' },
+        'json': { type: 'z.coerce.boolean.default', required: true, hasDefault: true, default: false, description: 'Print machine-readable JSON', short: 'j', schema: {"type":"zod","method":"default","args":[{"type":"unknown","raw":{"type":"BooleanLiteral","start":2151,"end":2156,"loc":{"start":{"line":61,"column":44,"index":2151},"end":{"line":61,"column":49,"index":2156}},"value":false}}]}, validator: '(val) => true' }
       },
       path: './src/commands/changelog'
+    },
+  'configure': {
+      name: 'configure',
+      description: 'Configure release defaults and Teams channels',
+      options: {
+        'show': { type: 'z.coerce.boolean.default', required: true, hasDefault: true, default: false, description: 'Show current release config', short: 's', schema: {"type":"zod","method":"default","args":[{"type":"unknown","raw":{"type":"BooleanLiteral","start":1055,"end":1060,"loc":{"start":{"line":34,"column":44,"index":1055},"end":{"line":34,"column":49,"index":1060}},"value":false}}]}, validator: '(val) => true' }
+      },
+      path: './src/commands/configure'
     }
 } as const
 

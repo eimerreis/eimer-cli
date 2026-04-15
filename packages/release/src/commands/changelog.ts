@@ -1,9 +1,11 @@
 import { defineCommand, option } from "@bunli/core";
+import { printError, printInfo, printSuccess, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import { getAreaConfig, listAreas, mergeAreaConfigs, type AreaConfig } from "../areas";
-import { loadConfig } from "../config";
+import { loadConfig, resolveChannels } from "../config";
 import { copyToClipboard } from "./clipboard";
 import { buildMarkdownChangelog, countGroupedCommits, groupCommitsByType } from "./changelog-format";
+import { hasSuccessfulProdStage, type ProdStageCache } from "./prod-stage";
 import { reviewTeamsMarkdown } from "./teams-review";
 import { postChangelogToTeams } from "./teams-webhook";
 import {
@@ -53,6 +55,9 @@ const changelogCommand = defineCommand({
     "post-webhook": option(z.string().trim().optional(), {
       description: "Post changelog to Microsoft Teams incoming webhook URL",
     }),
+    channel: option(z.string().trim().optional(), {
+      description: "Named Teams channel from release config",
+    }),
     json: option(z.coerce.boolean().default(false), {
       short: "j",
       description: "Print machine-readable JSON",
@@ -60,11 +65,19 @@ const changelogCommand = defineCommand({
   },
   handler: async ({ flags, positional, prompt }) => {
     try {
-      const config = await loadConfig();
-      const context = await getAzureContext();
-      const prodStageCache = new Map<number, boolean>();
+      const config = await withSpinner("Loading release config", () => loadConfig(), {
+        silentFailure: true,
+        silentSuccess: true,
+      });
+      const context = await withSpinner("Loading Azure DevOps context", () => getAzureContext(), {
+        silentFailure: true,
+        silentSuccess: true,
+      });
+      const prodStageCache: ProdStageCache = new Map();
       const defaultPipeline = (config.release?.defaultPipeline || "").trim();
+      const configuredProdStageName = (config.release?.prodStageName || "").trim();
       const mergedAreaConfigs = mergeAreaConfigs(config.areas);
+      const resolvedChannels = resolveChannels(config);
 
       let pipelineName = resolveStringArg(flags.pipeline, positional);
       if (!pipelineName) {
@@ -78,11 +91,21 @@ const changelogCommand = defineCommand({
       }
 
       if (!pipelineName) {
-        throw new Error("Missing pipeline name. Usage: release changelog [pipeline]");
+        throw new Error("Missing pipeline name. Usage: release changelog [pipeline]. Pass a pipeline name or configure a default with 'eimer configure'.");
       }
 
-      const pipeline = await resolvePipelineByName(pipelineName);
-      let fromRun = await resolveFromRun(pipeline.id, context.baseUrl, flags.from, prodStageCache);
+      const pipeline = await withSpinner("Resolving pipeline", () => resolvePipelineByName(pipelineName), {
+        silentFailure: true,
+        silentSuccess: true,
+      });
+      let fromRun = await withSpinner(
+        "Resolving source release run",
+        () => resolveFromRun(pipeline.id, context.baseUrl, flags.from, prodStageCache, configuredProdStageName),
+        {
+          silentFailure: true,
+          silentSuccess: true,
+        },
+      );
       let fromCommit = (fromRun.sourceVersion || "").trim();
       let targetRun: PipelineRun | null = null;
 
@@ -96,7 +119,10 @@ const changelogCommand = defineCommand({
       }
 
       if (!flags.to) {
-        targetRun = await resolveLatestSucceededMasterRun(pipeline.id);
+        targetRun = await withSpinner("Resolving target master run", () => resolveLatestSucceededMasterRun(pipeline.id), {
+          silentFailure: true,
+          silentSuccess: true,
+        });
       }
 
       const toCommit = flags.to ? normalizeCommitSha(flags.to) : (targetRun?.sourceVersion || "").trim();
@@ -115,6 +141,7 @@ const changelogCommand = defineCommand({
           context.baseUrl,
           currentReleaseRun.id,
           prodStageCache,
+          configuredProdStageName,
         );
         if (!previousRun) {
           throw new Error("No new master commits and no previous successful prod release run found for fallback.");
@@ -136,12 +163,16 @@ const changelogCommand = defineCommand({
         effectiveToCommit = currentReleaseCommit;
       }
 
-      const commits = await loadRemoteMasterCommitRange({
-        baseUrl: context.baseUrl,
-        repositoryId,
-        fromCommit,
-        toCommit: effectiveToCommit,
-      });
+      const commits = await withSpinner(
+        "Loading commit range",
+        () => loadRemoteMasterCommitRange({
+          baseUrl: context.baseUrl,
+          repositoryId,
+          fromCommit,
+          toCommit: effectiveToCommit,
+        }),
+        { silentFailure: true, silentSuccess: true },
+      );
 
       const { included, manualReview, areaName } = filterCommitsByArea(commits, flags.area, mergedAreaConfigs);
       const grouped = groupCommitsByType(included);
@@ -157,7 +188,28 @@ const changelogCommand = defineCommand({
         manualReview,
       });
 
-      const webhookUrl = (flags["post-webhook"] || config.teams?.webhookUrl || "").trim();
+      const webhookTarget = await resolveWebhookTarget(
+        {
+          adHocWebhookUrl: flags["post-webhook"],
+          selectedChannel: flags.channel,
+          channels: resolvedChannels,
+          useInteractivePrompt: !flags.json && process.stdin.isTTY && process.stdout.isTTY,
+        },
+        prompt as unknown as {
+          select(
+            message: string,
+            options: {
+              options: Array<{
+                value: string;
+                label: string;
+                hint?: string;
+              }>;
+              default?: string;
+            },
+          ): Promise<string>;
+        },
+      );
+      const webhookUrl = webhookTarget.webhookUrl;
       let skippedWebhookPost = false;
 
       if (webhookUrl && !flags.json && process.stdin.isTTY && process.stdout.isTTY) {
@@ -181,17 +233,22 @@ const changelogCommand = defineCommand({
 
       let postedFormat: "adaptive-card" | "message-card" | null = null;
       if (webhookUrl && !skippedWebhookPost) {
-        postedFormat = await postChangelogToTeams({
-          webhookUrl,
-          pipelineName: pipeline.name || pipelineName,
-          fromRunId: fromRun.id,
-          toRunId,
-          fromCommit,
-          toCommit: effectiveToCommit,
-          area: areaName,
-          pipelineRunUrl: toRunId ? buildRunUrl(context, toRunId) : undefined,
-          markdown,
-        });
+        postedFormat = await withSpinner(
+          "Posting changelog to Teams",
+          () =>
+            postChangelogToTeams({
+              webhookUrl,
+              pipelineName: pipeline.name || pipelineName,
+              fromRunId: fromRun.id,
+              toRunId,
+              fromCommit,
+              toCommit: effectiveToCommit,
+              area: areaName,
+              pipelineRunUrl: toRunId ? buildRunUrl(context, toRunId) : undefined,
+              markdown,
+            }),
+          { silentFailure: true, silentSuccess: true },
+        );
       }
 
       if (flags.json) {
@@ -215,6 +272,7 @@ const changelogCommand = defineCommand({
               manualReviewCount: manualReview.length,
               postedToWebhook: Boolean(webhookUrl) && !skippedWebhookPost && Boolean(postedFormat),
               postedFormat,
+              postedChannel: webhookTarget.channelName || null,
               grouped,
               manualReview,
               markdown,
@@ -229,40 +287,33 @@ const changelogCommand = defineCommand({
       console.log(markdown);
 
       if (!flags["no-copy"]) {
-        await copyToClipboard(markdown);
-        console.log("\nCopied changelog to clipboard.");
+        await withSpinner("Copying changelog to clipboard", () => copyToClipboard(markdown), {
+          silentFailure: true,
+          silentSuccess: true,
+        });
+        printSuccess("Copied changelog to clipboard.");
       }
 
       if (postedFormat) {
-        console.log(`Posted changelog to Teams webhook (${postedFormat}).`);
+        const channelLabel = webhookTarget.channelName ? ` channel '${webhookTarget.channelName}'` : " webhook";
+        printSuccess(`Posted changelog to Teams${channelLabel} (${postedFormat}).`);
       } else if (skippedWebhookPost) {
-        console.log("Skipped Teams webhook post.");
+        printInfo("Skipped Teams webhook post.");
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to build changelog: ${message}`);
+      printError(`Failed to build changelog: ${message}`, "Verify your Azure DevOps defaults and release pipeline name with `eimer configure --show`.");
       process.exit(1);
     }
   },
 });
 
-type BuildTimelineRecord = {
-  type?: string;
-  identifier?: string;
-  name?: string;
-  result?: string;
-  state?: string;
-};
-
-type BuildTimeline = {
-  records?: BuildTimelineRecord[];
-};
-
 async function resolveFromRun(
   pipelineId: number,
   baseUrl: string,
   fromRunId: number | undefined,
-  prodStageCache: Map<number, boolean>,
+  prodStageCache: ProdStageCache,
+  prodStageName?: string,
 ): Promise<PipelineRun> {
   if (fromRunId) {
     const run = await runJson<PipelineRun>([
@@ -281,9 +332,9 @@ async function resolveFromRun(
     return run;
   }
 
-  const latestProdReleaseRun = await resolveLatestProdReleaseRun(pipelineId, baseUrl, prodStageCache);
+  const latestProdReleaseRun = await resolveLatestProdReleaseRun(pipelineId, baseUrl, prodStageCache, prodStageName);
   if (!latestProdReleaseRun) {
-    throw new Error("No successful prod release run found on master. Pass --from <runId>.");
+    throw new Error("No successful prod release run found on master. Configure release.prodStageName via `release configure` or pass --from <runId>.");
   }
 
   return latestProdReleaseRun;
@@ -292,11 +343,17 @@ async function resolveFromRun(
 async function resolveLatestProdReleaseRun(
   pipelineId: number,
   baseUrl: string,
-  prodStageCache: Map<number, boolean>,
+  prodStageCache: ProdStageCache,
+  prodStageName?: string,
 ): Promise<PipelineRun | null> {
   const runs = await loadSucceededMasterRuns(pipelineId, 1);
   if (runs.length === 1) {
-    const isProdSuccess = await hasSuccessfulProdStage(baseUrl, runs[0].id, prodStageCache);
+    const isProdSuccess = await hasSuccessfulProdStage({
+      baseUrl,
+      runId: runs[0].id,
+      cache: prodStageCache,
+      prodStageName,
+    });
     if (isProdSuccess) {
       return runs[0];
     }
@@ -304,7 +361,14 @@ async function resolveLatestProdReleaseRun(
 
   const expandedRuns = await loadSucceededMasterRuns(pipelineId, 200);
   for (const run of expandedRuns) {
-    if (await hasSuccessfulProdStage(baseUrl, run.id, prodStageCache)) {
+    if (
+      await hasSuccessfulProdStage({
+        baseUrl,
+        runId: run.id,
+        cache: prodStageCache,
+        prodStageName,
+      })
+    ) {
       return run;
     }
   }
@@ -321,13 +385,19 @@ async function resolvePreviousProdReleaseRun(
   pipelineId: number,
   baseUrl: string,
   currentRunId: number,
-  prodStageCache: Map<number, boolean>,
+  prodStageCache: ProdStageCache,
+  prodStageName?: string,
 ): Promise<PipelineRun | null> {
   const runs = await loadSucceededMasterRuns(pipelineId, 200);
   let passedCurrent = false;
 
   for (const run of runs) {
-    const isProdSuccess = await hasSuccessfulProdStage(baseUrl, run.id, prodStageCache);
+    const isProdSuccess = await hasSuccessfulProdStage({
+      baseUrl,
+      runId: run.id,
+      cache: prodStageCache,
+      prodStageName,
+    });
     if (!isProdSuccess) {
       continue;
     }
@@ -344,57 +414,6 @@ async function resolvePreviousProdReleaseRun(
   }
 
   return null;
-}
-
-async function hasSuccessfulProdStage(baseUrl: string, runId: number, cache: Map<number, boolean>): Promise<boolean> {
-  const cached = cache.get(runId);
-  if (typeof cached === "boolean") {
-    return cached;
-  }
-
-  const timeline = await runJson<BuildTimeline>([
-    "az",
-    "rest",
-    "--resource",
-    "499b84ac-1321-427f-aa17-267ca6975798",
-    "--method",
-    "get",
-    "--url",
-    `${baseUrl}/_apis/build/builds/${runId}/timeline?api-version=7.1`,
-    "--output",
-    "json",
-  ]);
-
-  const records = timeline.records || [];
-  const hasProd = records.some((record) => {
-    if ((record.type || "").toLowerCase() !== "stage") {
-      return false;
-    }
-
-    const identifier = (record.identifier || "").toLowerCase();
-    const name = (record.name || "").toLowerCase();
-    const identifierParts = identifier.split(/[^a-z0-9]+/).filter(Boolean);
-    const nameParts = name.split(/[^a-z0-9]+/).filter(Boolean);
-    const mentionsProd = identifier.includes("prod") || name.includes("prod");
-    const hasStandaloneProdStage = identifierParts.includes("prod") || nameParts.includes("prod");
-    const hasDeployProdStage =
-      (identifierParts.includes("deploy") && identifierParts.includes("prod")) ||
-      (nameParts.includes("deploy") && nameParts.includes("prod"));
-    const isProdStage =
-      identifier === "deploy_prod" ||
-      hasDeployProdStage ||
-      hasStandaloneProdStage ||
-      (mentionsProd && (identifier.includes("production") || name.includes("production")));
-
-    if (!isProdStage) {
-      return false;
-    }
-
-    return (record.state || "").toLowerCase() === "completed" && (record.result || "").toLowerCase() === "succeeded";
-  });
-
-  cache.set(runId, hasProd);
-  return hasProd;
 }
 
 async function loadSucceededMasterRuns(pipelineId: number, top: number): Promise<PipelineRun[]> {
@@ -581,6 +600,100 @@ function normalizeCommitSha(value: string): string {
 
 function normalizeBranch(value: string): string {
   return value.replace(/^refs\/heads\//i, "").trim().toLowerCase();
+}
+
+async function resolveWebhookTarget(
+  options: {
+    adHocWebhookUrl?: string;
+    selectedChannel?: string;
+    channels: Record<string, string>;
+    useInteractivePrompt: boolean;
+  },
+  prompt: {
+    select(
+      message: string,
+      options: {
+        options: Array<{
+          value: string;
+          label: string;
+          hint?: string;
+        }>;
+        default?: string;
+      },
+    ): Promise<string>;
+  },
+): Promise<{ webhookUrl: string; channelName: string }> {
+  const adHocWebhookUrl = (options.adHocWebhookUrl || "").trim();
+  if (adHocWebhookUrl) {
+    return {
+      webhookUrl: adHocWebhookUrl,
+      channelName: "ad-hoc",
+    };
+  }
+
+  const channelEntries = Object.entries(options.channels);
+  if (channelEntries.length === 0) {
+    return {
+      webhookUrl: "",
+      channelName: "",
+    };
+  }
+
+  const selectedChannel = (options.selectedChannel || "").trim();
+  if (selectedChannel) {
+    const matchedEntry = channelEntries.find(([channelName]) => normalizeText(channelName) === normalizeText(selectedChannel));
+    if (!matchedEntry) {
+      const available = channelEntries.map(([name]) => name).sort().join(", ");
+      throw new Error(`Unknown Teams channel '${selectedChannel}'. Available channels: ${available}`);
+    }
+
+    return {
+      channelName: matchedEntry[0],
+      webhookUrl: matchedEntry[1],
+    };
+  }
+
+  if (channelEntries.length === 1) {
+    return {
+      channelName: channelEntries[0][0],
+      webhookUrl: channelEntries[0][1],
+    };
+  }
+
+  if (!options.useInteractivePrompt) {
+    const available = channelEntries.map(([name]) => name).sort().join(", ");
+    throw new Error(`Multiple Teams channels configured. Pass --channel <name>. Available channels: ${available}`);
+  }
+
+  const selectedValue = await prompt.select("Choose Teams channel", {
+    options: channelEntries
+      .map(([name, webhookUrl]) => ({
+        value: name,
+        label: name,
+        hint: maskWebhookUrl(webhookUrl),
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label)),
+    default: channelEntries[0][0],
+  });
+
+  const selectedEntry = channelEntries.find(([name]) => name === selectedValue);
+  if (!selectedEntry) {
+    throw new Error(`Failed to resolve selected Teams channel '${selectedValue}'.`);
+  }
+
+  return {
+    channelName: selectedEntry[0],
+    webhookUrl: selectedEntry[1],
+  };
+}
+
+function maskWebhookUrl(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= 14) {
+    return "***";
+  }
+
+  return `${trimmed.slice(0, 10)}...${trimmed.slice(-4)}`;
 }
 
 function filterCommitsByArea(

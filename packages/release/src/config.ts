@@ -1,26 +1,29 @@
+import { mkdir } from "node:fs/promises";
 import { z } from "zod";
 
-const stringValue = z.string().trim().min(1);
+const requiredString = z.string().trim().min(1);
 
 const areaConfigSchema = z.object({
-  includeScopes: z.array(stringValue),
-  excludeScopes: z.array(stringValue),
-  excludeKeywords: z.array(stringValue),
+  includeScopes: z.array(requiredString),
+  excludeScopes: z.array(requiredString),
+  excludeKeywords: z.array(requiredString),
 });
 
 const configSchema = z
   .object({
     teams: z
       .object({
-        webhookUrl: stringValue.optional(),
+        webhookUrl: requiredString.optional(),
+        channels: z.record(requiredString, requiredString).optional(),
       })
       .optional(),
     release: z
       .object({
-        defaultPipeline: stringValue.optional(),
+        defaultPipeline: requiredString.optional(),
+        prodStageName: requiredString.optional(),
       })
       .optional(),
-    areas: z.record(stringValue, areaConfigSchema).optional(),
+    areas: z.record(requiredString, areaConfigSchema).optional(),
   })
   .strict();
 
@@ -63,5 +66,39 @@ async function loadConfig(): Promise<ReleaseConfig> {
   }
 }
 
-export { getConfigPath, loadConfig };
+async function saveConfig(nextConfig: ReleaseConfig): Promise<ReleaseConfig> {
+  const parsed = configSchema.parse(nextConfig);
+  await mkdir(getConfigDir(), { recursive: true });
+  await Bun.write(getConfigPath(), `${JSON.stringify(parsed, null, 2)}\n`);
+  return parsed;
+}
+
+function resolveChannels(config: ReleaseConfig): Record<string, string> {
+  const channels: Record<string, string> = {};
+
+  const defaultWebhook = (config.teams?.webhookUrl || "").trim();
+  if (defaultWebhook) {
+    channels.default = defaultWebhook;
+  }
+
+  const configured = config.teams?.channels || {};
+  for (const [name, url] of Object.entries(configured)) {
+    const normalizedName = name.trim();
+    const normalizedUrl = url.trim();
+    if (!normalizedName || !normalizedUrl) {
+      continue;
+    }
+
+    channels[normalizedName] = normalizedUrl;
+  }
+
+  return channels;
+}
+
+function withHomePath(path: string): string {
+  const homeDir = process.env.HOME || Bun.env.HOME;
+  return homeDir ? path.replace(homeDir, "~") : path;
+}
+
+export { getConfigPath, loadConfig, resolveChannels, saveConfig, withHomePath };
 export type { ReleaseAreaConfig, ReleaseConfig };
