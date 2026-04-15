@@ -10,7 +10,7 @@
   "bumpVersionsWithWorkspaceProtocolOnly": true,
   "ignore": [],
   "privatePackages": {
-    "version": false,
+    "version": true,
     "tag": false
   }
 }
