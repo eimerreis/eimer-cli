@@ -58,7 +58,7 @@ function buildAdaptiveCardPayload(input: TeamsPostInput): unknown {
         content: {
           $schema: "https://adaptivecards.io/schemas/adaptive-card.json",
           type: "AdaptiveCard",
-          version: "1.6",
+          version: "1.4",
           msteams: {
             width: "Full",
           },
