@@ -200,6 +200,10 @@ const changelogCommand = defineCommand({
         manualReview,
       });
 
+      if (isCiMode && !flags["post-webhook"] && !flags.channel) {
+        throw new Error("Missing webhook target in CI mode. Pass `--post-webhook <url>` or `--channel <name>`.");
+      }
+
       const webhookTarget = await resolveWebhookTarget(
         {
           adHocWebhookUrl: flags["post-webhook"],
