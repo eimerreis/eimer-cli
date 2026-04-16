@@ -1,5 +1,11 @@
 # @scripts/release
 
+## 0.3.0
+
+### Minor Changes
+
+- 04da644: adds --prod-stage-name option
+
 ## 0.2.0
 
 ### Minor Changes
