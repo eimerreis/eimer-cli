@@ -91,6 +91,7 @@ The command shows the changelog before posting, lets you edit it in your editor,
 In CI/non-interactive mode:
 - pass `--pipeline <name>` or configure `release.defaultPipeline`
 - pass `--post-webhook <url>` or `--channel <name>`
+- optionally pass `--prod-stage-name <stage>` to avoid relying on config for prod stage detection
 - clipboard copy and interactive review are skipped automatically
 
 Example pipeline step (after successful prod deployment stage):
@@ -99,6 +100,7 @@ Example pipeline step (after successful prod deployment stage):
 - script: |
     bunx @tapio/release changelog \
       --pipeline "$(ReleasePipelineName)" \
+      --prod-stage-name "$(ProdStageName)" \
       --post-webhook "$(TEAMS_RELEASE_WEBHOOK)" \
       --no-copy
   displayName: "Post release changelog"

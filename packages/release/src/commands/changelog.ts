@@ -51,6 +51,9 @@ const changelogCommand = defineCommand({
       short: "a",
       description: "Area filter from predefined configs",
     }),
+    "prod-stage-name": option(z.string().trim().optional(), {
+      description: "Prod stage identifier/name override (useful for CI without config)",
+    }),
     "no-copy": option(z.coerce.boolean().default(false), {
       description: "Print only, do not copy changelog to clipboard",
     }),
@@ -80,6 +83,7 @@ const changelogCommand = defineCommand({
       const prodStageCache: ProdStageCache = new Map();
       const defaultPipeline = (config.release?.defaultPipeline || "").trim();
       const configuredProdStageName = (config.release?.prodStageName || "").trim();
+      const resolvedProdStageName = (flags["prod-stage-name"] || configuredProdStageName).trim();
       const mergedAreaConfigs = mergeAreaConfigs(config.areas);
       const resolvedChannels = resolveChannels(config);
 
@@ -112,7 +116,7 @@ const changelogCommand = defineCommand({
       });
       let fromRun = await withSpinner(
         "Resolving source release run",
-        () => resolveFromRun(pipeline.id, context.baseUrl, flags.from, prodStageCache, configuredProdStageName),
+        () => resolveFromRun(pipeline.id, context.baseUrl, flags.from, prodStageCache, resolvedProdStageName),
         {
           silentFailure: true,
           silentSuccess: true,
@@ -153,7 +157,7 @@ const changelogCommand = defineCommand({
           context.baseUrl,
           currentReleaseRun.id,
           prodStageCache,
-          configuredProdStageName,
+          resolvedProdStageName,
         );
         if (!previousRun) {
           throw new Error("No new master commits and no previous successful prod release run found for fallback.");
