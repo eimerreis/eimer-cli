@@ -18,7 +18,8 @@ Path: `~/.config/tapio-release/config.json`
   },
   "release": {
     "defaultPipeline": "example-release-pipeline",
-    "prodStageName": "deploy_production"
+    "prodStageName": "deploy_production",
+    "defaultBranch": "refs/heads/master"
   },
   "areas": {
     "frontend": {
@@ -40,6 +41,7 @@ Notes:
 - `teams.channels` lets you configure named webhook targets (use with `--channel <name>`)
 - `release.defaultPipeline` is used as the default pipeline prompt value
 - `release.prodStageName` overrides automatic prod-stage detection in release run scanning
+- `release.defaultBranch` overrides the default branch ref (default: `refs/heads/master`); passed as-is to the API with no normalization, so use the exact format your platform expects (e.g. `refs/heads/main` for Azure DevOps, `main` for GitHub)
 - `areas` entries merge with defaults (`frontend`, `backend`, `infra`) and can override them
 
 ## Azure DevOps auth/context resolution
@@ -78,6 +80,31 @@ Native build outputs global binary to `../../bin/release`.
 - `release changelog`: Build grouped changelog from pipeline run commit range and copy to clipboard
 - `release approve`: Approve pending Azure DevOps pipeline approvals
 
+### Branch override
+
+By default, `changelog` targets `refs/heads/master`. Use `--branch` to override with any ref your platform expects:
+
+```bash
+# Azure DevOps — use full ref
+release changelog --branch refs/heads/main
+
+# GitHub — use short branch name
+release changelog --branch main
+
+# Release branch
+release changelog --branch refs/heads/release/2.0
+```
+
+Or set it permanently in config:
+
+```json
+{
+  "release": {
+    "defaultBranch": "refs/heads/main"
+  }
+}
+```
+
 ### Post changelog to Teams webhook
 
 ```bash
@@ -91,6 +118,7 @@ The command shows the changelog before posting, lets you edit it in your editor,
 In CI/non-interactive mode:
 - pass `--pipeline <name>` or configure `release.defaultPipeline`
 - pass `--post-webhook <url>` or `--channel <name>`
+- optionally pass `--branch <ref>` to target a specific branch (default: `refs/heads/master`)
 - optionally pass `--prod-stage-name <stage>` to avoid relying on config for prod stage detection
 - clipboard copy and interactive review are skipped automatically
 
