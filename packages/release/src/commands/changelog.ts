@@ -512,60 +512,76 @@ async function loadRemoteCommitRange(options: {
   toCommit: string;
 }): Promise<CommitInfo[]> {
   const client = await getAzureClientForBaseUrl(options.baseUrl);
-  const commits: CommitInfo[] = [];
-  const seen = new Set<string>();
-  let skip = 0;
   const pageSize = 100;
   const maxPages = 20;
 
-  for (let page = 0; page < maxPages; page += 1) {
-    const response = await client.getJson<AzureGitCommitResponse>(`/_apis/git/repositories/${options.repositoryId}/commits`, {
-      "searchCriteria.itemVersion.version": options.toCommit,
-      "searchCriteria.itemVersion.versionType": "commit",
-      "searchCriteria.historyMode": "firstParent",
-      "searchCriteria.$top": pageSize,
-      "searchCriteria.$skip": skip,
-    });
+  const loadRangeWithHistoryMode = async (historyMode?: "firstParent" | "fullHistory"): Promise<CommitInfo[] | null> => {
+    const commits: CommitInfo[] = [];
+    const seen = new Set<string>();
+    let skip = 0;
 
-    const items = response.value || [];
-    if (items.length === 0) {
-      break;
-    }
-
-    let reachedFrom = false;
-    for (const item of items) {
-      const hash = (item.commitId || "").trim();
-      if (!hash || seen.has(hash)) {
-        continue;
-      }
-      seen.add(hash);
-
-      if (hash.toLowerCase() === options.fromCommit.toLowerCase()) {
-        reachedFrom = true;
-        break;
+    for (let page = 0; page < maxPages; page += 1) {
+      const query: Record<string, string | number> = {
+        "searchCriteria.itemVersion.version": options.toCommit,
+        "searchCriteria.itemVersion.versionType": "commit",
+        "searchCriteria.$top": pageSize,
+        "searchCriteria.$skip": skip,
+      };
+      if (historyMode) {
+        query["searchCriteria.historyMode"] = historyMode;
       }
 
-      const subject = (item.comment || "").split(/\r?\n/, 1)[0]?.trim() || hash;
-      const parsed = parseSubjectAndPr(subject, options.baseUrl, options.repositoryId);
-      commits.push({
-        hash,
-        shortHash: hash.slice(0, 7),
-        subject: parsed.subject,
-        conventional: parseConventionalCommit(parsed.subject),
-        prNumber: parsed.prNumber,
-        prUrl: parsed.prUrl,
-      });
+      const response = await client.getJson<AzureGitCommitResponse>(
+        `/_apis/git/repositories/${options.repositoryId}/commits`,
+        query,
+      );
+
+      const items = response.value || [];
+      if (items.length === 0) {
+        return null;
+      }
+
+      for (const item of items) {
+        const hash = (item.commitId || "").trim();
+        if (!hash || seen.has(hash)) {
+          continue;
+        }
+        seen.add(hash);
+
+        if (hash.toLowerCase() === options.fromCommit.toLowerCase()) {
+          return commits;
+        }
+
+        const subject = (item.comment || "").split(/\r?\n/, 1)[0]?.trim() || hash;
+        const parsed = parseSubjectAndPr(subject, options.baseUrl, options.repositoryId);
+        commits.push({
+          hash,
+          shortHash: hash.slice(0, 7),
+          subject: parsed.subject,
+          conventional: parseConventionalCommit(parsed.subject),
+          prNumber: parsed.prNumber,
+          prUrl: parsed.prUrl,
+        });
+      }
+
+      skip += items.length;
     }
 
-    if (reachedFrom) {
-      return commits;
-    }
+    return null;
+  };
 
-    skip += items.length;
+  const firstParentRange = await loadRangeWithHistoryMode("firstParent");
+  if (firstParentRange) {
+    return firstParentRange;
+  }
+
+  const fullHistoryRange = await loadRangeWithHistoryMode("fullHistory");
+  if (fullHistoryRange) {
+    return fullHistoryRange;
   }
 
   throw new Error(
-    `Could not resolve commit range from ${options.fromCommit.slice(0, 7)} to ${options.toCommit.slice(0, 7)} within first-parent history.`,
+    `Could not resolve commit range from ${options.fromCommit.slice(0, 7)} to ${options.toCommit.slice(0, 7)}. History may have diverged or been rewritten on the release branch. Pass --from <runId> from current branch history or set --to <sha>.`,
   );
 }
 
