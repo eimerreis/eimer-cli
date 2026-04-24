@@ -33,19 +33,23 @@ type AzureGitCommitResponse = {
 
 const changelogCommand = defineCommand({
   name: "changelog",
-  description: "Build release changelog from remote master commits",
+  description: "Build release changelog from pipeline commits on a branch",
   options: {
     pipeline: option(z.string().trim().optional(), {
       short: "p",
       description: "Pipeline name",
     }),
+    branch: option(z.string().trim().optional(), {
+      short: "b",
+      description: "Branch ref override (default: refs/heads/master, or release.defaultBranch from config)",
+    }),
     from: option(z.coerce.number().int().positive().optional(), {
       short: "f",
-      description: "From run ID override (defaults to latest prod-success run on master)",
+      description: "From run ID override (defaults to latest prod-success run on the branch)",
     }),
     to: option(z.string().trim().optional(), {
       short: "t",
-      description: "To commit SHA override (default: latest successful master pipeline run)",
+      description: "To commit SHA override (default: latest successful pipeline run on the branch)",
     }),
     area: option(z.string().trim().optional(), {
       short: "a",
@@ -84,6 +88,9 @@ const changelogCommand = defineCommand({
       const defaultPipeline = (config.release?.defaultPipeline || "").trim();
       const configuredProdStageName = (config.release?.prodStageName || "").trim();
       const resolvedProdStageName = (flags["prod-stage-name"] || configuredProdStageName).trim();
+      const configuredDefaultBranch = (config.release?.defaultBranch || "").trim();
+      const branch = (flags.branch || configuredDefaultBranch || "refs/heads/master").trim();
+      const branchDisplayName = branch.replace(/^refs\/heads\//i, "");
       const mergedAreaConfigs = mergeAreaConfigs(config.areas);
       const resolvedChannels = resolveChannels(config);
 
@@ -116,7 +123,7 @@ const changelogCommand = defineCommand({
       });
       let fromRun = await withSpinner(
         "Resolving source release run",
-        () => resolveFromRun(pipeline.id, context.baseUrl, flags.from, prodStageCache, resolvedProdStageName),
+        () => resolveFromRun(pipeline.id, context.baseUrl, flags.from, prodStageCache, resolvedProdStageName, branch, branchDisplayName),
         {
           silentFailure: true,
           silentSuccess: true,
@@ -135,7 +142,7 @@ const changelogCommand = defineCommand({
       }
 
       if (!flags.to) {
-        targetRun = await withSpinner("Resolving target master run", () => resolveLatestSucceededMasterRun(pipeline.id), {
+        targetRun = await withSpinner(`Resolving target ${branchDisplayName} run`, () => resolveLatestSucceededBranchRun(pipeline.id, branch), {
           silentFailure: true,
           silentSuccess: true,
         });
@@ -147,7 +154,7 @@ const changelogCommand = defineCommand({
       let toRunId = flags.to ? undefined : targetRun?.id;
 
       if (!effectiveToCommit) {
-        throw new Error("Could not resolve target commit from latest successful master pipeline run.");
+        throw new Error(`Could not resolve target commit from latest successful ${branchDisplayName} pipeline run.`);
       }
 
       if (fromCommit.toLowerCase() === effectiveToCommit.toLowerCase()) {
@@ -158,9 +165,10 @@ const changelogCommand = defineCommand({
           currentReleaseRun.id,
           prodStageCache,
           resolvedProdStageName,
+          branch,
         );
         if (!previousRun) {
-          throw new Error("No new master commits and no previous successful prod release run found for fallback.");
+          throw new Error(`No new ${branchDisplayName} commits and no previous successful prod release run found for fallback.`);
         }
 
         const previousCommit = (previousRun.sourceVersion || "").trim();
@@ -181,7 +189,7 @@ const changelogCommand = defineCommand({
 
       const commits = await withSpinner(
         "Loading commit range",
-        () => loadRemoteMasterCommitRange({
+        () => loadRemoteCommitRange({
           baseUrl: context.baseUrl,
           repositoryId,
           fromCommit,
@@ -291,7 +299,7 @@ const changelogCommand = defineCommand({
                 toRunId: toRunId || null,
                 fromCommit,
                 toCommit: effectiveToCommit,
-                branch: "master",
+                branch: branchDisplayName,
               },
               area: areaName || null,
               totalCommits: commits.length,
@@ -345,17 +353,19 @@ async function resolveFromRun(
   baseUrl: string,
   fromRunId: number | undefined,
   prodStageCache: ProdStageCache,
-  prodStageName?: string,
+  prodStageName: string | undefined,
+  branch: string,
+  branchDisplayName: string,
 ): Promise<PipelineRun> {
   if (fromRunId) {
     const run = await loadRunById(fromRunId);
-    validateRunIsMasterSuccess(run, pipelineId);
+    validateRunBranchSuccess(run, pipelineId, branchDisplayName);
     return run;
   }
 
-  const latestProdReleaseRun = await resolveLatestProdReleaseRun(pipelineId, baseUrl, prodStageCache, prodStageName);
+  const latestProdReleaseRun = await resolveLatestProdReleaseRun(pipelineId, baseUrl, prodStageCache, prodStageName, branch);
   if (!latestProdReleaseRun) {
-    throw new Error("No successful prod release run found on master. Configure release.prodStageName via `release configure` or pass --from <runId>.");
+    throw new Error(`No successful prod release run found on ${branchDisplayName}. Configure release.prodStageName via \`release configure\` or pass --from <runId>.`);
   }
 
   return latestProdReleaseRun;
@@ -365,9 +375,10 @@ async function resolveLatestProdReleaseRun(
   pipelineId: number,
   baseUrl: string,
   prodStageCache: ProdStageCache,
-  prodStageName?: string,
+  prodStageName: string | undefined,
+  branch: string,
 ): Promise<PipelineRun | null> {
-  const runs = await loadSucceededMasterRuns(pipelineId, 1);
+  const runs = await loadCompletedBranchRuns(pipelineId, branch, 1);
   if (runs.length === 1) {
     const isProdSuccess = await hasSuccessfulProdStage({
       baseUrl,
@@ -380,7 +391,7 @@ async function resolveLatestProdReleaseRun(
     }
   }
 
-  const expandedRuns = await loadSucceededMasterRuns(pipelineId, 200);
+  const expandedRuns = await loadCompletedBranchRuns(pipelineId, branch, 200);
   for (const run of expandedRuns) {
     if (
       await hasSuccessfulProdStage({
@@ -397,8 +408,8 @@ async function resolveLatestProdReleaseRun(
   return null;
 }
 
-async function resolveLatestSucceededMasterRun(pipelineId: number): Promise<PipelineRun | null> {
-  const runs = await loadSucceededMasterRuns(pipelineId, 1);
+async function resolveLatestSucceededBranchRun(pipelineId: number, branch: string): Promise<PipelineRun | null> {
+  const runs = await loadSucceededBranchRuns(pipelineId, branch, 1);
   return runs[0] || null;
 }
 
@@ -407,9 +418,10 @@ async function resolvePreviousProdReleaseRun(
   baseUrl: string,
   currentRunId: number,
   prodStageCache: ProdStageCache,
-  prodStageName?: string,
+  prodStageName: string | undefined,
+  branch: string,
 ): Promise<PipelineRun | null> {
-  const runs = await loadSucceededMasterRuns(pipelineId, 200);
+  const runs = await loadCompletedBranchRuns(pipelineId, branch, 200);
   let passedCurrent = false;
 
   for (const run of runs) {
@@ -437,17 +449,26 @@ async function resolvePreviousProdReleaseRun(
   return null;
 }
 
-async function loadSucceededMasterRuns(pipelineId: number, top: number): Promise<PipelineRun[]> {
+async function loadSucceededBranchRuns(pipelineId: number, branch: string, top: number): Promise<PipelineRun[]> {
   return loadPipelineRuns({
     pipelineId,
     status: "completed",
     result: "succeeded",
-    branch: "master",
+    branch,
     top,
   });
 }
 
-function validateRunIsMasterSuccess(run: PipelineRun, pipelineId: number): void {
+async function loadCompletedBranchRuns(pipelineId: number, branch: string, top: number): Promise<PipelineRun[]> {
+  return loadPipelineRuns({
+    pipelineId,
+    status: "completed",
+    branch,
+    top,
+  });
+}
+
+function validateRunBranchSuccess(run: PipelineRun, pipelineId: number, expectedBranch: string): void {
   if (run.definition?.id && run.definition.id !== pipelineId) {
     throw new Error(`Run #${run.id} does not belong to selected pipeline ID ${pipelineId}.`);
   }
@@ -460,16 +481,16 @@ function validateRunIsMasterSuccess(run: PipelineRun, pipelineId: number): void 
     throw new Error(`Run #${run.id} is not succeeded.`);
   }
 
-  const branch = normalizeBranch(run.sourceBranch || "");
-  if (branch !== "master") {
-    throw new Error(`Run #${run.id} is on branch '${run.sourceBranch || ""}', expected master.`);
+  const runBranch = normalizeBranch(run.sourceBranch || "");
+  if (runBranch !== expectedBranch.toLowerCase()) {
+    throw new Error(`Run #${run.id} is on branch '${run.sourceBranch || ""}', expected ${expectedBranch}.`);
   }
 }
 
-async function resolveLatestMasterCommit(baseUrl: string, repositoryId: string): Promise<string> {
+async function resolveLatestBranchCommit(baseUrl: string, repositoryId: string, branch: string): Promise<string> {
   const client = await getAzureClientForBaseUrl(baseUrl);
   const response = await client.getJson<AzureGitCommitResponse>(`/_apis/git/repositories/${repositoryId}/commits`, {
-    "searchCriteria.itemVersion.version": "master",
+    "searchCriteria.itemVersion.version": branch,
     "searchCriteria.itemVersion.versionType": "branch",
     "searchCriteria.historyMode": "firstParent",
     "searchCriteria.$top": 1,
@@ -484,7 +505,7 @@ function isCiEnvironment(): boolean {
   );
 }
 
-async function loadRemoteMasterCommitRange(options: {
+async function loadRemoteCommitRange(options: {
   baseUrl: string;
   repositoryId: string;
   fromCommit: string;
@@ -544,7 +565,7 @@ async function loadRemoteMasterCommitRange(options: {
   }
 
   throw new Error(
-    `Could not resolve master commit range from ${options.fromCommit.slice(0, 7)} to ${options.toCommit.slice(0, 7)} within first-parent history.`,
+    `Could not resolve commit range from ${options.fromCommit.slice(0, 7)} to ${options.toCommit.slice(0, 7)} within first-parent history.`,
   );
 }
 

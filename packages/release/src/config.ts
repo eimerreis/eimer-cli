@@ -21,6 +21,7 @@ const configSchema = z
       .object({
         defaultPipeline: requiredString.optional(),
         prodStageName: requiredString.optional(),
+        defaultBranch: requiredString.optional(),
       })
       .optional(),
     areas: z.record(requiredString, areaConfigSchema).optional(),
