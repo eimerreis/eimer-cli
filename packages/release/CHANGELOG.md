@@ -1,5 +1,11 @@
 # @scripts/release
 
+## 0.4.0
+
+### Minor Changes
+
+- 9ed7e38: feat: add defaultBranch configuration and branch override for changelog command
+
 ## 0.3.0
 
 ### Minor Changes
