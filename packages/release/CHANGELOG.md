@@ -1,5 +1,11 @@
 # @scripts/release
 
+## 0.5.0
+
+### Minor Changes
+
+- 1a50970: fix(release): fallback changelog range beyond first-parent
+
 ## 0.4.0
 
 ### Minor Changes
