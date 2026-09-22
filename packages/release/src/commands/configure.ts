@@ -76,9 +76,16 @@ async function promptForConfig(current: ReleaseConfig, prompt: ConfigurePrompt):
     })
   ).trim();
 
+  const defaultBranch = (
+    await prompt.text("Release branch ref", {
+      placeholder: "refs/heads/master",
+      fallbackValue: current.release?.defaultBranch || "refs/heads/master",
+    })
+  ).trim();
+
   let prodStageName = (current.release?.prodStageName || "").trim();
   if (defaultPipeline) {
-    const stageOptions = await resolveStageOptions(defaultPipeline);
+    const stageOptions = await resolveStageOptions(defaultPipeline, defaultBranch || "refs/heads/master");
     prodStageName = await promptForProdStageName(stageOptions, prodStageName, prompt);
   } else {
     prodStageName = (
@@ -105,6 +112,7 @@ async function promptForConfig(current: ReleaseConfig, prompt: ConfigurePrompt):
     release: {
       defaultPipeline: defaultPipeline || undefined,
       prodStageName: prodStageName || undefined,
+      defaultBranch: defaultBranch || undefined,
     },
     teams:
       primaryWebhook || Object.keys(namedChannels).length > 0
@@ -117,7 +125,7 @@ async function promptForConfig(current: ReleaseConfig, prompt: ConfigurePrompt):
   });
 }
 
-async function resolveStageOptions(pipelineName: string): Promise<string[]> {
+async function resolveStageOptions(pipelineName: string, branch: string): Promise<string[]> {
   const context = await withSpinner("Loading Azure DevOps context", () => getAzureContext(), {
     silentFailure: true,
     silentSuccess: true,
@@ -129,7 +137,7 @@ async function resolveStageOptions(pipelineName: string): Promise<string[]> {
 
   const runs = await withSpinner(
     "Loading recent pipeline runs",
-    () => loadPipelineRuns({ pipelineId: pipeline.id, top: 30, status: "completed" }),
+    () => loadPipelineRuns({ pipelineId: pipeline.id, branch, top: 30, status: "completed" }),
     {
       silentFailure: true,
       silentSuccess: true,
@@ -275,6 +283,7 @@ function printConfigSummary(config: ReleaseConfig, configPath: string): void {
 
   console.log(`Config path: ${configPath}`);
   console.log(`Default pipeline: ${config.release?.defaultPipeline || "(not set)"}`);
+  console.log(`Release branch ref: ${config.release?.defaultBranch || "refs/heads/master (built-in default)"}`);
   console.log(`Prod stage override: ${config.release?.prodStageName || "(auto-detect)"}`);
   if (channelNames.length === 0) {
     console.log("Teams channels: (none)");
@@ -300,10 +309,11 @@ function pruneEmptyConfig(config: ReleaseConfig): ReleaseConfig {
           }
         : undefined,
     release:
-      config.release?.defaultPipeline || config.release?.prodStageName
+      config.release?.defaultPipeline || config.release?.prodStageName || config.release?.defaultBranch
         ? {
             defaultPipeline: config.release?.defaultPipeline || undefined,
             prodStageName: config.release?.prodStageName || undefined,
+            defaultBranch: config.release?.defaultBranch || undefined,
           }
         : undefined,
     areas: config.areas,

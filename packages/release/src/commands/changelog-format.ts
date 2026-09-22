@@ -105,6 +105,7 @@ function appendGroup(lines: string[], title: string, commits: CommitInfo[]): voi
 
 function buildMarkdownChangelog(params: {
   pipelineName: string;
+  branch: string;
   fromRunId?: number;
   toRunId?: number;
   fromCommit: string;
@@ -120,6 +121,7 @@ function buildMarkdownChangelog(params: {
     `## Release Changelog`,
     ``,
     `Pipeline: ${params.pipelineName}`,
+    `Branch: ${params.branch}`,
     `Range: ${fromLabel} -> ${toLabel}${areaSuffix}`,
     `Commits: ${params.fromCommit.slice(0, 7)}..${params.toCommit.slice(0, 7)}`,
     ``,
