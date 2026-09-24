@@ -1,5 +1,11 @@
 # @scripts/release
 
+## 0.5.1
+
+### Patch Changes
+
+- 7a34a1e: Expose the configured release branch in the setup wizard and changelog output, and use it when discovering production stages.
+
 ## 0.5.0
 
 ### Minor Changes

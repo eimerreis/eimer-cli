@@ -1,5 +1,12 @@
 # @scripts/eimer
 
+## 0.1.5
+
+### Patch Changes
+
+- Updated dependencies [7a34a1e]
+  - @scripts/release@0.5.1
+
 ## 0.1.4
 
 ### Patch Changes
