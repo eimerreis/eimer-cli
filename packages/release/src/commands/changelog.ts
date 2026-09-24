@@ -203,6 +203,7 @@ const changelogCommand = defineCommand({
 
       let markdown = buildMarkdownChangelog({
         pipelineName: pipeline.name || pipelineName,
+        branch: branchDisplayName,
         fromRunId: fromRun.id,
         toRunId,
         fromCommit,

@@ -128,6 +128,7 @@ Example pipeline step (after successful prod deployment stage):
 - script: |
     bunx @tapio/release changelog \
       --pipeline "$(ReleasePipelineName)" \
+      --branch "$(ReleaseBranch)" \
       --prod-stage-name "$(ProdStageName)" \
       --post-webhook "$(TEAMS_RELEASE_WEBHOOK)" \
       --no-copy
