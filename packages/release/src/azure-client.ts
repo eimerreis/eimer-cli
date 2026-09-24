@@ -53,6 +53,18 @@ class AzureDevOpsClient {
     });
 
     const raw = await response.text();
+    if (isHtmlResponse(response, raw)) {
+      if (isAzureSignInPage(response, raw)) {
+        throw new Error(
+          `Azure DevOps returned a sign-in page (${response.status}) for ${url}; authentication was rejected. Verify SYSTEM_ACCESSTOKEN or AZURE_DEVOPS_PAT if set, otherwise refresh your Azure CLI login and confirm access to this organization.`,
+        );
+      }
+
+      throw new Error(
+        `Azure DevOps returned HTML instead of JSON (${response.status}) for ${url}. Check the organization/project URL and any network proxy.`,
+      );
+    }
+
     if (!response.ok) {
       const detail = extractErrorMessage(raw);
       throw new Error(`Azure DevOps request failed (${response.status} ${response.statusText}) for ${url}: ${detail}`);
@@ -69,6 +81,16 @@ class AzureDevOpsClient {
       throw new Error(`Failed to parse Azure DevOps JSON response from ${url}: ${message}`);
     }
   }
+}
+
+function isHtmlResponse(response: Response, raw: string): boolean {
+  return (response.headers.get("content-type") || "").toLowerCase().includes("text/html") || /^\s*</.test(raw);
+}
+
+function isAzureSignInPage(response: Response, raw: string): boolean {
+  const title = raw.match(/<title[^>]*>(.*?)<\/title>/is)?.[1] || "";
+  const finalHost = response.url ? new URL(response.url).hostname.toLowerCase() : "";
+  return /azure devops.*sign in/i.test(title) || finalHost.endsWith(".vssps.visualstudio.com");
 }
 
 async function createAzureDevOpsClient(): Promise<{ context: AzureContext; client: AzureDevOpsClient }> {
