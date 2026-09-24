@@ -57,6 +57,8 @@ Context precedence:
 
 This means CI does not need Azure CLI if pipeline variables are present.
 
+If Azure DevOps returns a sign-in page instead of JSON, it rejected the credential used for the request. Locally, check whether `AZURE_DEVOPS_PAT` is set (it takes priority over Azure CLI); otherwise refresh `az login` with an account that can access the organization. In CI, check `SYSTEM_ACCESSTOKEN` and the pipeline's OAuth token access setting.
+
 ## Development
 
 ```bash
