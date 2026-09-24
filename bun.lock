@@ -21,7 +21,7 @@
     },
     "packages/eimer": {
       "name": "@scripts/eimer",
-      "version": "0.1.4",
+      "version": "0.1.6",
       "bin": {
         "eimer": "./dist/index.js",
       },
@@ -93,7 +93,7 @@
     },
     "packages/release": {
       "name": "@scripts/release",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "bin": {
         "release": "./dist/index.js",
       },

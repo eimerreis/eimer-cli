@@ -1,5 +1,11 @@
 # @scripts/release
 
+## 0.5.2
+
+### Patch Changes
+
+- f3afa79: Report Azure DevOps sign-in redirects as authentication failures instead of JSON parse errors.
+
 ## 0.5.1
 
 ### Patch Changes
