@@ -101,6 +101,10 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
+      - name: Sync Bun lockfile with release version
+        if: steps.version.outputs.changed == 'true'
+        run: bun install --lockfile-only --ignore-scripts
+
       - name: Build publish bundle
         if: steps.version.outputs.changed == 'true'
         run: bun build packages/release/src/index.ts --outdir packages/release/dist --target bun
