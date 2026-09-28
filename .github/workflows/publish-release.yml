@@ -137,18 +137,16 @@ jobs:
             if (!releasePackageName || !version) {
               throw new Error("RELEASE_PACKAGE_NAME and VERSION must be set.");
             }
+            // Keep native runtime deps in sync with the versions the bundle was built against.
+            const installedVersion = async (name) => JSON.parse(await Bun.file(`node_modules/${name}/package.json`).text()).version;
+            const opentuiVersion = await installedVersion("@opentui/core");
             const runtimeDependencies = {
-              "@opentui/core": "0.1.90",
-              "ws": "8.20.0"
+              "@opentui/core": opentuiVersion,
+              "ws": await installedVersion("ws")
             };
-            const runtimeOptionalDependencies = {
-              "@opentui/core-darwin-arm64": "0.1.90",
-              "@opentui/core-darwin-x64": "0.1.90",
-              "@opentui/core-linux-arm64": "0.1.90",
-              "@opentui/core-linux-x64": "0.1.90",
-              "@opentui/core-win32-arm64": "0.1.90",
-              "@opentui/core-win32-x64": "0.1.90"
-            };
+            const runtimeOptionalDependencies = Object.fromEntries(
+              ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-arm64", "win32-x64"].map((platform) => [`@opentui/core-${platform}`, opentuiVersion])
+            );
             const next = {
               name: releasePackageName,
               version,

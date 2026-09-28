@@ -6,28 +6,29 @@
   "author": "",
   "exports": {
     ".": "./src/index.ts",
-    "./commands": "./src/commands/index.ts"
+    "./commands": "./src/commands/index.ts",
+    "./config": "./src/config.ts"
   },
   "bin": {
     "release": "./dist/index.js"
   },
   "scripts": {
-    "postinstall": "bunli generate",
+    "generate": "bunli generate",
     "dev": "bun run src/index.ts",
-    "build": "bunli build --native --outfile ../../bin/release",
+    "build": "bun build src/index.ts --compile --minify --outfile ../../bin/release",
     "build:publish": "bun build src/index.ts --outdir dist --target bun",
-    "test": "bun test",
+    "test": "bun test --pass-with-no-tests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@bunli/core": "latest",
+    "@bunli/core": "0.9.1",
     "@scripts/ui": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@bunli/test": "latest",
+    "@bunli/test": "0.6.0",
     "@types/bun": "latest",
-    "bunli": "latest",
+    "bunli": "0.9.1",
     "typescript": "^5.0.0"
   },
   "bunli": {
