@@ -14,6 +14,7 @@ const commentsCommand = defineCommand({
       description: "Pull request ID/number override",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),

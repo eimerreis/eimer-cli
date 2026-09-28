@@ -26,6 +26,7 @@ const watchCommand = defineCommand({
       description: "Polling interval in seconds",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON on completion",
     }),

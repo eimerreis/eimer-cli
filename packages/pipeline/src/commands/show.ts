@@ -21,6 +21,7 @@ const showCommand = defineCommand({
       description: "Pipeline run ID",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),

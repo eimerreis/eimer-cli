@@ -21,6 +21,7 @@ const runsCommand = defineCommand({
       description: "Maximum number of runs to print",
     }),
     all: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "a",
       description: "Include runs from all repositories",
     }),
@@ -37,6 +38,7 @@ const runsCommand = defineCommand({
       description: "Filter by status (inProgress/completed/notStarted)",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),

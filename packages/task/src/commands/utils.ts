@@ -1,4 +1,4 @@
-import { colors, symbols } from "@scripts/ui";
+import { colors, runJson, runText, symbols } from "@scripts/ui";
 import { loadConfig } from "@scripts/config";
 
 type WorkItemIdentity = {
@@ -50,36 +50,6 @@ async function getDefaultTeam(): Promise<string> {
 async function getDefaultAreaPath(): Promise<string> {
   const config = await loadConfig();
   return config.task?.defaultAreaPath || DEFAULT_AREA_PATH;
-}
-
-async function runText(command: string[]): Promise<string> {
-  const process = Bun.spawn({
-    cmd: command,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-    process.exited,
-  ]);
-
-  if (exitCode !== 0) {
-    throw new Error(`Command failed (${command.join(" ")}): ${stderr.trim() || stdout.trim()}`);
-  }
-
-  return stdout;
-}
-
-async function runJson<T>(command: string[]): Promise<T> {
-  const raw = await runText(command);
-  try {
-    return JSON.parse(raw) as T;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse JSON from '${command.join(" ")}': ${message}`);
-  }
 }
 
 async function loadCurrentIterationByTeam(team?: string): Promise<string | null> {

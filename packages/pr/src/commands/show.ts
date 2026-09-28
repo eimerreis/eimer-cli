@@ -39,6 +39,7 @@ const showCommand = defineCommand({
       description: "Repo override (GitHub: owner/repo, AzDO: repo name)",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),

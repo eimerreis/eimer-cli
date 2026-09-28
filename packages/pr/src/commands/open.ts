@@ -1,5 +1,5 @@
 import { defineCommand, option } from "@bunli/core";
-import { printError, printInfo, printSuccess, withSpinner } from "@scripts/ui";
+import { openUrl, printError, printInfo, printSuccess, withSpinner } from "@scripts/ui";
 import { findAzurePrByBranch, findAzurePrById } from "./comments-azdo";
 import { findGitHubPrByBranch, findGitHubPrById, parseGitHubRepo } from "./comments-github";
 import { detectPlatform, resolveIdArg, runText } from "./comments-utils";
@@ -88,7 +88,7 @@ async function openGitHubPr(
     process.exit(1);
   }
 
-  await runText(["open", pr.html_url]);
+  await openUrl(pr.html_url);
   printSuccess(`Opened PR #${pr.number}: ${pr.title}`);
 }
 

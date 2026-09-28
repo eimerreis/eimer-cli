@@ -1,4 +1,4 @@
-import { bold, dim, printInfo, symbols, terminalLink } from "@scripts/ui";
+import { bold, dim, printInfo, runJson, symbols, terminalLink } from "@scripts/ui";
 
 type CheckStatus = "pass" | "fail" | "pending" | "unknown";
 
@@ -95,29 +95,8 @@ type AzurePolicy = {
   };
 };
 
-async function runJsonAllowExitCodes<T>(command: string[], allowedExitCodes: number[]): Promise<T> {
-  const process = Bun.spawn({
-    cmd: command,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-    process.exited,
-  ]);
-
-  if (!allowedExitCodes.includes(exitCode)) {
-    throw new Error(`Command failed (${command.join(" ")}): ${stderr.trim() || stdout.trim()}`);
-  }
-
-  try {
-    return JSON.parse(stdout) as T;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse JSON from '${command.join(" ")}': ${message}`);
-  }
+function runJsonAllowExitCodes<T>(command: string[], allowedExitCodes: number[]): Promise<T> {
+  return runJson<T>(command, allowedExitCodes);
 }
 
 function normalizeGitHubCheckStatus(bucket?: string, state?: string): CheckStatus {

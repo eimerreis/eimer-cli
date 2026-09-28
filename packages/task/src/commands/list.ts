@@ -35,6 +35,7 @@ const listCommand = defineCommand({
       description: "Team name for current sprint lookup",
     }),
     all: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "a",
       description: "Include non-active states",
     }),
@@ -43,6 +44,7 @@ const listCommand = defineCommand({
       description: "Maximum number of tasks to print",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),

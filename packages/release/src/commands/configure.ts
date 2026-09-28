@@ -32,6 +32,7 @@ const configureCommand = defineCommand({
   description: "Configure release defaults and Teams channels",
   options: {
     show: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "s",
       description: "Show current release config",
     }),
@@ -39,9 +40,8 @@ const configureCommand = defineCommand({
   handler: async ({ flags, prompt }) => {
     try {
       const configPath = withHomePath(getConfigPath());
-      const showRequested = flags.show || hasCliFlag("--show", "-s");
 
-      if (showRequested) {
+      if (flags.show) {
         const current = await withSpinner("Loading release config", () => loadConfig(), {
           silentFailure: true,
           silentSuccess: true,
@@ -277,6 +277,10 @@ async function promptForChannels(current: ReleaseConfig, prompt: ConfigurePrompt
   }
 }
 
+async function showReleaseConfig(): Promise<void> {
+  printConfigSummary(await loadConfig(), withHomePath(getConfigPath()));
+}
+
 function printConfigSummary(config: ReleaseConfig, configPath: string): void {
   const channels = resolveChannels(config);
   const channelNames = Object.keys(channels).sort((left, right) => left.localeCompare(right));
@@ -329,9 +333,5 @@ function maskWebhookUrl(value: string): string {
   return `${trimmed.slice(0, 10)}...${trimmed.slice(-4)}`;
 }
 
-function hasCliFlag(longFlag: string, shortFlag: string): boolean {
-  const argv = Bun.argv.slice(2);
-  return argv.includes(longFlag) || argv.includes(shortFlag);
-}
-
+export { showReleaseConfig };
 export default configureCommand;

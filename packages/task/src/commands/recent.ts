@@ -25,6 +25,7 @@ const recentCommand = defineCommand({
   description: "List your recent tasks",
   options: {
     all: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "a",
       description: "Include closed and non-active states",
     }),
@@ -33,6 +34,7 @@ const recentCommand = defineCommand({
       description: "Maximum number of tasks to print",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),

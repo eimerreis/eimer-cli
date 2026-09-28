@@ -26,6 +26,7 @@ const approveCommand = defineCommand({
       description: "Approval ID",
     }),
     all: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "a",
       description: "Approve all matched approvals",
     }),
@@ -34,6 +35,7 @@ const approveCommand = defineCommand({
       description: "Approval comment",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),

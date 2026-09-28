@@ -1,28 +1,28 @@
 import { defineCommand, option } from "@bunli/core";
 import { deleteConfig, getConfigPath, loadConfig, saveConfig, withHomePath, type EimerConfig } from "@scripts/config";
-import { printError, printSuccess } from "@scripts/ui";
+import { showReleaseConfig } from "@scripts/release/commands";
+import { bold, printError, printInfo, printSuccess } from "@scripts/ui";
 import { z } from "zod";
 
-const configurableKeys = [
-  "teams.webhookUrl",
-  "task.defaultTeam",
-  "task.defaultAreaPath",
-  "release.defaultPipeline",
-] as const;
+const configurableKeys = ["task.defaultTeam", "task.defaultAreaPath"] as const;
 
 type ConfigKey = (typeof configurableKeys)[number];
 
+const releaseHint = "Release settings (pipeline, branch, Teams channels) live in their own file: run `eimer release configure`.";
+
 const configureCommand = defineCommand({
   name: "configure",
-  description: "Manage shared CLI defaults",
+  description: "Manage shared CLI defaults (task); see `eimer release configure` for release settings",
   options: {
     show: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "s",
-      description: "Show current config",
+      description: "Show current config (eimer + release)",
     }),
     reset: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "r",
-      description: "Delete config file",
+      description: "Delete eimer config file",
     }),
     key: option(z.enum(configurableKeys).optional(), {
       short: "k",
@@ -45,7 +45,13 @@ const configureCommand = defineCommand({
 
       if (flags.show) {
         const current = await loadConfig();
-        console.log(JSON.stringify(current, null, 2));
+        console.log(bold("eimer config"));
+        console.log(`Config path: ${path}`);
+        console.log(`Default team: ${current.task?.defaultTeam || "(not set)"}`);
+        console.log(`Default area path: ${current.task?.defaultAreaPath || "(not set)"}`);
+        console.log("");
+        console.log(bold("release config"));
+        await showReleaseConfig();
         return;
       }
 
@@ -60,6 +66,7 @@ const configureCommand = defineCommand({
       const next = await promptForConfig(current, prompt);
       await saveConfig(next);
       printSuccess(`Saved config to ${path}.`);
+      printInfo(releaseHint);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       printError(`Failed to configure eimer: ${message}`, "Try `eimer configure --show` to inspect the current config before changing values.");
@@ -80,11 +87,6 @@ async function promptForConfig(
     ): Promise<string>;
   },
 ): Promise<EimerConfig> {
-  const webhookUrl = (await prompt.text("Teams webhook URL", {
-    placeholder: "https://...",
-    fallbackValue: current.teams?.webhookUrl || "",
-  })).trim();
-
   const defaultTeam = (await prompt.text("Default Azure DevOps team", {
     placeholder: "Default Team",
     fallbackValue: current.task?.defaultTeam || "",
@@ -95,34 +97,16 @@ async function promptForConfig(
     fallbackValue: current.task?.defaultAreaPath || "",
   })).trim();
 
-  const defaultPipeline = (await prompt.text("Default release pipeline name", {
-    placeholder: "example-release-pipeline",
-    fallbackValue: current.release?.defaultPipeline || "",
-  })).trim();
-
   return pruneEmpty({
-    teams: {
-      webhookUrl,
-    },
     task: {
       defaultTeam,
       defaultAreaPath,
-    },
-    release: {
-      defaultPipeline,
     },
   });
 }
 
 function setConfigValue(current: EimerConfig, key: ConfigKey, value: string): EimerConfig {
   const next = structuredClone(current);
-
-  if (key === "teams.webhookUrl") {
-    next.teams = {
-      ...(next.teams || {}),
-      webhookUrl: value || undefined,
-    };
-  }
 
   if (key === "task.defaultTeam") {
     next.task = {
@@ -138,19 +122,11 @@ function setConfigValue(current: EimerConfig, key: ConfigKey, value: string): Ei
     };
   }
 
-  if (key === "release.defaultPipeline") {
-    next.release = {
-      ...(next.release || {}),
-      defaultPipeline: value || undefined,
-    };
-  }
-
   return pruneEmpty(next);
 }
 
 function pruneEmpty(config: EimerConfig): EimerConfig {
   return {
-    teams: config.teams?.webhookUrl ? { webhookUrl: config.teams.webhookUrl } : undefined,
     task:
       config.task?.defaultTeam || config.task?.defaultAreaPath
         ? {
@@ -158,7 +134,6 @@ function pruneEmpty(config: EimerConfig): EimerConfig {
             defaultAreaPath: config.task?.defaultAreaPath || undefined,
           }
         : undefined,
-    release: config.release?.defaultPipeline ? { defaultPipeline: config.release.defaultPipeline } : undefined,
   };
 }
 

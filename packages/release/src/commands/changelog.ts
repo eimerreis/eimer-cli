@@ -59,6 +59,7 @@ const changelogCommand = defineCommand({
       description: "Prod stage identifier/name override (useful for CI without config)",
     }),
     "no-copy": option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       description: "Print only, do not copy changelog to clipboard",
     }),
     "post-webhook": option(z.string().trim().optional(), {
@@ -68,6 +69,7 @@ const changelogCommand = defineCommand({
       description: "Named Teams channel from release config",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),

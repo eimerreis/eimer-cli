@@ -260,3 +260,6 @@ export {
 };
 
 export type { CreateTableOptions, SpinnerOptions, TableAlignment, TableCell, TableRow };
+
+export { knownTools, missingToolMessage, openUrl, requireTool, runJson, runRaw, runText } from "./process";
+export type { RunResult, ToolInfo } from "./process";

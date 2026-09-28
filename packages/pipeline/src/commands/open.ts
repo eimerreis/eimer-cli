@@ -12,6 +12,7 @@ const openCommand = defineCommand({
       description: "Run ID (opens latest for repo when omitted)",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),

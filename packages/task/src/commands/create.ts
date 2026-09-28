@@ -46,6 +46,7 @@ const createCommand = defineCommand({
       description: "Completed work hours",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),

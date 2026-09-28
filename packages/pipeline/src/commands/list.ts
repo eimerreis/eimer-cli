@@ -24,6 +24,7 @@ const listCommand = defineCommand({
       description: "Maximum number of pipelines to fetch",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),

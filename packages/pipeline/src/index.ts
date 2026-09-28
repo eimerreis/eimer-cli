@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { createCLI } from "@bunli/core";
+import pkg from "../package.json" with { type: "json" };
 import listCommand from "./commands/list";
 import openCommand from "./commands/open";
 import runsCommand from "./commands/runs";
@@ -9,7 +10,7 @@ import watchCommand from "./commands/watch";
 
 const cli = await createCLI({
   name: "pipeline",
-  version: "0.1.0",
+  version: pkg.version,
   description: "Pipeline CLI",
 });
 

@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 import { createCLI } from "@bunli/core";
+import pkg from "../package.json" with { type: "json" };
 import approveCommand from "./commands/approve";
 import changelogCommand from "./commands/changelog";
 import configureCommand from "./commands/configure";
 
 const cli = await createCLI({
   name: "release",
-  version: "0.1.0",
+  version: pkg.version,
   description: "Release CLI",
 });
 

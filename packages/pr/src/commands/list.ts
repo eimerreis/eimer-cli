@@ -66,14 +66,17 @@ const listCommand = defineCommand({
   description: "List open pull requests",
   options: {
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),
     all: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "a",
       description: "Search across all repos",
     }),
     reviewer: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "r",
       description: "Show PRs where I am a reviewer",
     }),

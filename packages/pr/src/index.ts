@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { createCLI } from "@bunli/core";
+import pkg from "../package.json" with { type: "json" };
 import commentsCommand from "./commands/comments";
 import copyCommand from "./commands/copy";
 import createCommand from "./commands/create";
@@ -9,9 +10,8 @@ import showCommand from "./commands/show";
 
 const cli = await createCLI({
   name: "pr",
-
-  version: "0.1.0",
-  description: "A CLI built with Bunli",
+  version: pkg.version,
+  description: "Pull request CLI",
 });
 
 cli.command(createCommand);

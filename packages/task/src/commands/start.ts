@@ -20,6 +20,7 @@ const startCommand = defineCommand({
       description: "Task ID",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),

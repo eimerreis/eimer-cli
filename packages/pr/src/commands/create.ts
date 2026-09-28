@@ -1,5 +1,5 @@
 import { defineCommand } from "@bunli/core";
-import { printError, printInfo, printSuccess, withSpinner } from "@scripts/ui";
+import { openUrl, printError, printInfo, printSuccess, withSpinner } from "@scripts/ui";
 import { runJson, runText } from "./comments-utils";
 
 type CreatedPullRequest = {
@@ -99,7 +99,7 @@ const createCommand = defineCommand({
 
       const webUrl = pr._links?.web?.href;
       if (webUrl) {
-        await runText(["open", webUrl]);
+        await openUrl(webUrl);
       } else {
         await runText([
           "az",

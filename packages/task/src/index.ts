@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { createCLI } from "@bunli/core";
+import pkg from "../package.json" with { type: "json" };
 import closeCommand from "./commands/close";
 import createCommand from "./commands/create";
 import listCommand from "./commands/list";
@@ -9,7 +10,7 @@ import startCommand from "./commands/start";
 
 const cli = await createCLI({
   name: "task",
-  version: "0.1.0",
+  version: pkg.version,
   description: "Task CLI",
 });
 

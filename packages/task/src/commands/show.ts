@@ -31,14 +31,17 @@ const showCommand = defineCommand({
       description: "Task ID",
     }),
     parents: option(z.coerce.boolean().default(true), {
+      argumentKind: "flag",
       short: "p",
       description: "Include parent hierarchy (Task -> Story -> Epic)",
     }),
     "allow-non-task": option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "n",
       description: "Allow non-task root items (Bug/Story/etc)",
     }),
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),

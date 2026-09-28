@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const stringValue = z.string().trim().min(1).optional();
 
+// `teams` and `release` are legacy keys kept so existing files still parse; release settings live in ~/.config/tapio-release.
 const configSchema = z
   .object({
     teams: z

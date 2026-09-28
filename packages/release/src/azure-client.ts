@@ -1,3 +1,5 @@
+import { runText } from "@scripts/ui";
+
 const AZURE_DEVOPS_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798";
 const AZURE_DEVOPS_API_VERSION = "7.1";
 
@@ -224,24 +226,8 @@ function extractErrorMessage(raw: string): string {
   }
 }
 
-async function runCommand(command: string[]): Promise<string> {
-  const process = Bun.spawn({
-    cmd: command,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-    process.exited,
-  ]);
-
-  if (exitCode !== 0) {
-    throw new Error(`Command failed (${command.join(" ")}): ${stderr.trim() || stdout.trim()}`);
-  }
-
-  return stdout;
+function runCommand(command: string[]): Promise<string> {
+  return runText(command);
 }
 
 export { createAzureDevOpsClient, resolveAzureAuth, resolveAzureContext, type AzureContext, type AzureAuth, type QueryValue, AzureDevOpsClient };
