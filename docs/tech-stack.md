@@ -12,23 +12,27 @@ TypeScript monorepo of CLI tools running on Bun, built with Bunli (a Bun-native 
 - **TypeScript** - Strict mode, ES2022 target, ESNext modules, bundler module resolution. All source is `.ts`.
 
 ### CLI Framework
-- **Bunli** (`@bunli/core`, `bunli` CLI) - Bun-native CLI framework. Handles command definition, argument parsing, code generation (`bunli generate`), and native binary compilation (`bunli build --native`).
+- **Bunli** (`@bunli/core`, `bunli` CLI) - Bun-native CLI framework. Handles command definition, argument parsing and code generation (`bunli generate`). Pinned to exact versions together with a root `overrides` entry for `@opentui/core`/`@opentui/react` (duplicate copies crash at startup).
 
 ### Monorepo Structure
-- **npm workspaces** - `"workspaces": ["packages/*"]` in root `package.json`. Seven packages: `eimer`, `pr`, `pipeline`, `release`, `task`, `config`, `helpers`.
+- **Bun workspaces** - `"workspaces": ["packages/*"]` in root `package.json`, single `bun.lock`, Bun version pinned via `packageManager`. Eight packages: `eimer`, `pr`, `pipeline`, `release`, `task`, `config`, `ui`, `helpers`.
 
 ### Schema Validation
 - **Zod v4** - Config schema validation and CLI argument types.
 
 ### Build & Distribution
-- **`bunli build --native`** - Compiles each CLI to a standalone native binary in `bin/` (eimer, pr, pipeline, release, task).
+- **`bun build --compile`** - Compiles each CLI to a standalone native binary in `bin/` (eimer by default; pr, pipeline, release, task via `build:all`).
+- **`bun run setup` / `install.sh`** - One-command install: deps, build, symlink into `~/.local/bin`, `eimer doctor`.
 - **No bundler** - Bunli handles compilation; no Vite/esbuild/webpack.
 
 ### Testing
 - **`bun test`** - Built-in Bun test runner. `@bunli/test` available as dev dependency.
 
 ### Type Checking
-- **`tsc --noEmit`** - Per-package typecheck via workspace scripts.
+- **`tsc --noEmit`** - Per-package typecheck; `bun run typecheck` runs all.
+
+### CI
+- **GitHub Actions `ci.yml`** - Frozen install, typecheck, test, build all binaries and smoke-test `eimer` on Ubuntu and macOS.
 
 ### External APIs
 - **Azure DevOps REST API** - PRs, pipelines, work items, approvals (via `az` CLI subprocess)

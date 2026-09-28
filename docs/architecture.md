@@ -1,7 +1,7 @@
 # Architecture
 
 ## Overview
-Monorepo of Bun-native CLI tools organized as npm workspaces. Each domain (pr, pipeline, release, task) is a self-contained package that can run standalone or be composed into the `eimer` meta-CLI. All Azure DevOps interaction is delegated to the `az` CLI via subprocess invocation.
+Monorepo of Bun-native CLI tools organized as Bun workspaces. Each domain (pr, pipeline, release, task) is a self-contained package that can run standalone or be composed into the `eimer` meta-CLI. All Azure DevOps interaction is delegated to the `az` CLI via subprocess invocation.
 
 ## System Diagram
 
@@ -76,7 +76,8 @@ graph TB
 
 ### `@scripts/eimer` - Meta CLI
 - Imports command definitions from all domain packages
-- Registers them as subcommand groups (`pr`, `pipeline`, `release`, `task`, `configure`)
+- Registers them as subcommand groups (`pr`, `pipeline`, `release`, `task`) plus `configure`, `doctor`, `update`, `completions`
+- `doctor` checks tools/logins/config/PATH; `update` pulls, reinstalls and rebuilds the checkout (located via the symlinked binary or `EIMER_HOME`); `completions` prints shell glue that calls the hidden `eimer __complete` callback
 - Compiles to single `bin/eimer` native binary
 
 ### `@scripts/pr` - PR Workflows
@@ -104,8 +105,13 @@ graph TB
 
 ### `@scripts/config` - Shared Configuration
 - Read/write `~/.config/eimer/config.json`
-- Zod-validated schema: teams webhook, task defaults, release defaults
-- Consumed by release, task, and eimer packages
+- Zod-validated schema: task defaults (legacy `teams`/`release` keys are still accepted but unused)
+- Consumed by task and eimer packages; release keeps its own `~/.config/tapio-release/config.json` (it is published standalone), reachable via `eimer release configure`
+
+### `@scripts/ui` - Shared CLI helpers
+- Colors, symbols, tables, spinners, terminal links
+- `runText`/`runJson`/`requireTool`: subprocess helpers with install hints when `az`/`gh`/`git` is missing
+- `openUrl`: cross-platform browser opening (falls back to printing the URL)
 
 ### `@scripts/helpers` - Utility Scripts
 - Standalone scripts not part of the eimer CLI
@@ -131,9 +137,9 @@ graph TB
 ## Deployment
 
 ### Local (personal)
-- Native binaries in `bin/` built via `bunli build --native`
-- Build: `bunli build --native --outfile ../../bin/<name>` per package
-- Binaries symlinked or PATH'd from `bin/` directory
+- `./install.sh` (bootstraps Bun) -> `bun run setup`: `bun install`, `bun run build`, symlink `bin/eimer` into `~/.local/bin`, `eimer doctor`
+- Build: `bun build src/index.ts --compile --minify --outfile ../../bin/<name>` per package
+- Upgrade: `eimer update`
 
 ### Azure Artifacts (company)
 - `@scripts/release` published as `@tapio/release` to Azure Artifacts
@@ -147,8 +153,6 @@ graph TB
 - See [feature spec](features/001-release-publish.md) for full details
 
 ## Notable Patterns & Technical Debt
-- **Duplicated `runText`/`runJson` utilities** - identical subprocess helpers exist in `pr`, `pipeline`, and `task` packages independently (candidate for extraction to shared package)
 - **Duplicated `terminalLink`/`formatRelativeTime`** - same formatting utilities across packages
 - **`helpers` uses different toolchain** - tsx + cmd-ts vs Bunli; could be migrated for consistency
 - **`as any` casts** in eimer's command registration - likely Bunli type gap for nested command groups
-- **Root `package.json` scripts use `npm --workspace`** - should be migrated to `bun run --filter` or direct `cd && bun run` pattern

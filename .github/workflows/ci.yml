@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  check:
+    name: Install, typecheck, test, build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun run test
+
+      - name: Build all binaries
+        run: bun run build:all
+
+      - name: Smoke test eimer binary
+        run: |
+          set -euo pipefail
+          ./bin/eimer --version < /dev/null
+          ./bin/eimer __complete pr | grep -q '^create:'
+          # doctor exits non-zero when tools are missing on the runner; only check it runs and reports
+          ./bin/eimer doctor --json < /dev/null > doctor.json || true
+          grep -q '"checks"' doctor.json
