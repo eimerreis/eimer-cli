@@ -8,10 +8,10 @@
     "collect-music": "tsx ./src/collect-music.ts"
   },
   "dependencies": {
-    "cmd-ts": "^0.14.3",
+    "cmd-ts": "^0.15.0",
     "execa": "^9.6.0",
     "glob": "^13.0.0",
-    "tsx": "^4.20.6"
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@types/node": "^24.9.1"
