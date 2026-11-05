@@ -29,7 +29,7 @@
     "@bunli/test": "latest",
     "@types/bun": "latest",
     "bunli": "latest",
-    "typescript": "^5.0.0"
+    "typescript": "^7.0.2"
   },
   "bunli": {
     "entry": "./src/index.ts",

@@ -30,6 +30,6 @@
     "helpers:tag-music": "npm --workspace @scripts/helpers run tag-music"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.30.0"
+    "@changesets/cli": "^3.0.3"
   }
 }
