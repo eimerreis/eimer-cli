@@ -91,16 +91,20 @@ struct GitHubPrListItem {
 fn list_github(remote: &str, args: &ListArgs) -> Result<Vec<ListItem>> {
     let top = args.top.to_string();
     let (prs, repo_slug): (Vec<GitHubPrListItem>, Option<String>) = if args.all {
-        let query = if args.reviewer {
-            "state:open review-requested:@me"
+        // Qualifiers must be flags: gh quotes a positional query, so "author:@me" would be plain text.
+        let who = if args.reviewer {
+            "--review-requested"
         } else {
-            "state:open author:@me"
+            "--author"
         };
         let prs = run_json(argv(&[
             "gh",
             "search",
             "prs",
-            query,
+            "--state",
+            "open",
+            who,
+            "@me",
             "--limit",
             &top,
             "--json",
