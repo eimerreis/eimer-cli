@@ -147,3 +147,6 @@ vite.config.ts.timestamp-*
 eimer-release-changelog-*.md
 packages/helpers/src/translation-duplicates.*
 packages/**/*.map
+
+# Rust
+target/
