@@ -3,6 +3,7 @@ name: Release eimer
 # Builds the Rust `eimer` binary for all supported platforms.
 # - Push a tag `eimer/v<version>` (matching crates/eimer/Cargo.toml) to publish a GitHub Release.
 # - Run manually (workflow_dispatch) to build the artifacts without publishing.
+# - PRs that change dependencies or this workflow build (but never publish) to catch cross-compile breakage.
 # `release/v*` tags belong to the @tapio/release npm package and are not touched here.
 
 on:
@@ -10,6 +11,12 @@ on:
     tags:
       - "eimer/v*"
   workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/release-eimer.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/eimer/Cargo.toml"
 
 permissions:
   contents: read
