@@ -2,7 +2,10 @@ import { defineCommand, option } from "@bunli/core";
 import { formatRelativeTime, printError, printInfo, renderTable, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import {
+  azScopeArgs,
   buildWorkItemUrl,
+  contextOption,
+  initContext,
   extractAssignedTo,
   getStateEmoji,
   runJson,
@@ -25,6 +28,7 @@ const recentCommand = defineCommand({
   description: "List your recent tasks",
   options: {
     all: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "a",
       description: "Include closed and non-active states",
     }),
@@ -32,13 +36,17 @@ const recentCommand = defineCommand({
       short: "t",
       description: "Maximum number of tasks to print",
     }),
+    context: contextOption,
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),
   },
   handler: async ({ flags }) => {
     try {
+      await initContext(flags.context, { quiet: flags.json });
+
       const loadRows = async () => {
         const wiql =
           "SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo], [System.ChangedDate], [System.WorkItemType] " +
@@ -50,8 +58,7 @@ const recentCommand = defineCommand({
           "query",
           "--wiql",
           wiql,
-          "--detect",
-          "true",
+          ...azScopeArgs(),
           "--output",
           "json",
         ]);

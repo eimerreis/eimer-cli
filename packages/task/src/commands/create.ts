@@ -2,7 +2,10 @@ import { defineCommand, option } from "@bunli/core";
 import { printError, printInfo, printSuccess, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import {
+  azScopeArgs,
   buildWorkItemUrl,
+  contextOption,
+  initContext,
   extractAssignedTo,
   getDefaultAreaPath,
   getDefaultTeam,
@@ -45,13 +48,17 @@ const createCommand = defineCommand({
       short: "c",
       description: "Completed work hours",
     }),
+    context: contextOption,
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),
   },
   handler: async ({ positional, flags, prompt }) => {
     try {
+      await initContext(flags.context, { quiet: flags.json });
+
       const defaultAreaPath = await getDefaultAreaPath();
       const defaultTeam = await getDefaultTeam();
 
@@ -86,8 +93,7 @@ const createCommand = defineCommand({
         defaultAreaPath,
         "--iteration",
         iterationPath,
-        "--detect",
-        "true",
+        ...azScopeArgs(),
         "--output",
         "json",
       ];
@@ -126,8 +132,7 @@ const createCommand = defineCommand({
             "parent",
             "--target-id",
             String(flags.parent),
-            "--detect",
-            "true",
+            ...azScopeArgs({ project: false }),
             "--output",
             "json",
           ]);

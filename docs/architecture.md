@@ -98,13 +98,15 @@ graph TB
 
 ### `@scripts/task` - Task Management
 - Azure DevOps work items via `az boards`
-- Defaults from config (team, area path) with built-in fallbacks
+- Context-aware: every `az` call is scoped to the active context's org/project, or `--detect true` when no context is active
+- Defaults (team, area path) from the active context, then config, then built-in fallbacks
 - Current sprint iteration detection
-- Commands: create, list, recent, start, close, show
+- Commands: create, list (mine/team/children), recent, start, close, show, context (show/list/use)
 
 ### `@scripts/config` - Shared Configuration
 - Read/write `~/.config/eimer/config.json`
-- Zod-validated schema: teams webhook, task defaults, release defaults
+- Zod-validated schema: contexts, teams webhook, task defaults, release defaults
+- Context resolution (`resolveContext`): `--context` flag > `EIMER_CONTEXT` > nearest `.eimerrc` > `defaultContext` (see [feature spec](features/007-task-contexts-and-az-style-commands.md))
 - Consumed by release, task, and eimer packages
 
 ### `@scripts/helpers` - Utility Scripts
@@ -127,6 +129,7 @@ graph TB
 1. Commands call `loadConfig()` from `@scripts/config`
 2. Reads `~/.config/eimer/config.json` -> Zod-parses -> returns typed config
 3. Commands use config values as defaults, with hardcoded fallbacks
+4. Task commands additionally call `initContext()` first, which resolves the active context and scopes all `az` calls to it
 
 ## Deployment
 

@@ -1,7 +1,16 @@
 import { defineCommand, option } from "@bunli/core";
 import { printError, printInfo, printSuccess, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
-import { buildWorkItemUrl, getStateEmoji, resolveIdArg, runJson, tryGetAzureContext } from "./utils";
+import {
+  azScopeArgs,
+  buildWorkItemUrl,
+  contextOption,
+  getStateEmoji,
+  initContext,
+  resolveIdArg,
+  runJson,
+  tryGetAzureContext,
+} from "./utils";
 
 type UpdatedWorkItem = {
   id: number;
@@ -19,7 +28,9 @@ const closeCommand = defineCommand({
       short: "i",
       description: "Task ID",
     }),
+    context: contextOption,
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),
@@ -30,6 +41,8 @@ const closeCommand = defineCommand({
   },
   handler: async ({ flags, positional, prompt }) => {
     try {
+      await initContext(flags.context, { quiet: flags.json });
+
       let id = resolveIdArg(flags.id, positional);
 
       if (!id) {
@@ -60,8 +73,7 @@ const closeCommand = defineCommand({
         String(id),
         "--state",
         "Closed",
-        "--detect",
-        "true",
+        ...azScopeArgs({ project: false }),
         "--output",
         "json",
       ];

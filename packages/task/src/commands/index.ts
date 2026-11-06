@@ -1,4 +1,5 @@
 export { default as closeCommand } from "./close";
+export { default as contextCommand } from "./context";
 export { default as createCommand } from "./create";
 export { default as listCommand } from "./list";
 export { default as recentCommand } from "./recent";

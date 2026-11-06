@@ -2,7 +2,10 @@ import { defineCommand, option } from "@bunli/core";
 import { bold, formatRelativeTime, printError, printInfo, terminalLink, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import {
+  azScopeArgs,
   buildWorkItemUrl,
+  contextOption,
+  initContext,
   extractAssignedTo,
   extractParentId,
   getStateEmoji,
@@ -31,20 +34,26 @@ const showCommand = defineCommand({
       description: "Task ID",
     }),
     parents: option(z.coerce.boolean().default(true), {
+      argumentKind: "flag",
       short: "p",
       description: "Include parent hierarchy (Task -> Story -> Epic)",
     }),
     "allow-non-task": option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "n",
       description: "Allow non-task root items (Bug/Story/etc)",
     }),
+    context: contextOption,
     json: option(z.coerce.boolean().default(false), {
+      argumentKind: "flag",
       short: "j",
       description: "Print machine-readable JSON",
     }),
   },
   handler: async ({ flags, positional, prompt }) => {
     try {
+      await initContext(flags.context, { quiet: flags.json });
+
       let id = resolveIdArg(flags.id, positional);
 
       if (!id) {
@@ -102,8 +111,7 @@ async function loadWorkItem(id: number): Promise<ShowNode & { parentId: number |
     String(id),
     "--expand",
     "relations",
-    "--detect",
-    "true",
+    ...azScopeArgs({ project: false }),
     "--output",
     "json",
   ]);

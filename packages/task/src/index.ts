@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { createCLI } from "@bunli/core";
 import closeCommand from "./commands/close";
+import contextCommand from "./commands/context";
 import createCommand from "./commands/create";
 import listCommand from "./commands/list";
 import recentCommand from "./commands/recent";
@@ -19,5 +20,6 @@ cli.command(recentCommand);
 cli.command(startCommand);
 cli.command(closeCommand);
 cli.command(showCommand);
+cli.command(contextCommand);
 
 await cli.run();

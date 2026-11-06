@@ -1,5 +1,7 @@
-import { colors, symbols } from "@scripts/ui";
-import { loadConfig } from "@scripts/config";
+import { option } from "@bunli/core";
+import { describeSource, loadConfig, resolveContext, type ResolvedContext } from "@scripts/config";
+import { colors, printWarning, symbols } from "@scripts/ui";
+import { z } from "zod";
 
 type WorkItemIdentity = {
   displayName?: string;
@@ -42,12 +44,69 @@ type Iteration = {
 const DEFAULT_TEAM = "Default Team";
 const DEFAULT_AREA_PATH = "Company\\Engineering";
 
+/** Shared `--context` option, added to every task command. */
+const contextOption = option(z.string().trim().optional(), {
+  description: "Context from config.json to act in (overrides EIMER_CONTEXT and .eimerrc)",
+});
+
+let activeContext: ResolvedContext | null = null;
+
+/**
+ * Resolves the active context for this invocation (flag > env > .eimerrc > defaultContext).
+ * Must be called at the start of every command handler before any `az` invocation.
+ * Warns when the context points to a different project than the cwd's git remote.
+ */
+async function initContext(flag: string | undefined, options: { quiet?: boolean } = {}): Promise<ResolvedContext | null> {
+  activeContext = await resolveContext({ flag });
+
+  if (activeContext && !options.quiet) {
+    const remote = await tryGetRemoteContext();
+    if (remote && !sameProject(remote, activeContext)) {
+      printWarning(
+        `Using context '${activeContext.name}' (${activeContext.org}/${activeContext.project}) from ${describeSource(activeContext)}, but this repo points to ${remote.org}/${remote.project}.`,
+      );
+    }
+  }
+
+  return activeContext;
+}
+
+function getActiveContext(): ResolvedContext | null {
+  return activeContext;
+}
+
+/**
+ * Scope arguments for `az` commands: explicit org/project when a context is active,
+ * otherwise auto-detection from the git remote. Some `az boards work-item` subcommands
+ * do not accept `--project`, so it can be omitted.
+ */
+function azScopeArgs(options: { project?: boolean } = {}): string[] {
+  if (!activeContext) {
+    return ["--detect", "true"];
+  }
+
+  const args = ["--org", activeContext.orgUrl];
+  if (options.project !== false) {
+    args.push("--project", activeContext.project);
+  }
+
+  return args;
+}
+
 async function getDefaultTeam(): Promise<string> {
+  if (activeContext?.team) {
+    return activeContext.team;
+  }
+
   const config = await loadConfig();
   return config.task?.defaultTeam || DEFAULT_TEAM;
 }
 
 async function getDefaultAreaPath(): Promise<string> {
+  if (activeContext?.areaPath) {
+    return activeContext.areaPath;
+  }
+
   const config = await loadConfig();
   return config.task?.defaultAreaPath || DEFAULT_AREA_PATH;
 }
@@ -91,8 +150,7 @@ async function loadCurrentIterationByTeam(team?: string): Promise<string | null>
     "list",
     "--timeframe",
     "current",
-    "--detect",
-    "true",
+    ...azScopeArgs(),
     "--output",
     "json",
   ];
@@ -189,6 +247,24 @@ function parseAzureContextFromRemote(remoteUrl: string): AzureContext | null {
 }
 
 async function tryGetAzureContext(): Promise<AzureContext | null> {
+  if (activeContext) {
+    return {
+      org: activeContext.org,
+      project: activeContext.project,
+      baseUrl: `${activeContext.orgUrl}/${encodeURIComponent(activeContext.project)}`,
+    };
+  }
+
+  return tryGetRemoteContext();
+}
+
+function sameProject(left: { org: string; project: string }, right: { org: string; project: string }): boolean {
+  const normalizeOrg = (org: string) => org.replace(/^https?:\/\/dev\.azure\.com\//i, "").replace(/\/+$/, "").toLowerCase();
+  const normalizeProject = (project: string) => decodeURIComponent(project).toLowerCase();
+  return normalizeOrg(left.org) === normalizeOrg(right.org) && normalizeProject(left.project) === normalizeProject(right.project);
+}
+
+async function tryGetRemoteContext(): Promise<AzureContext | null> {
   try {
     const remoteUrl = (await runText(["git", "remote", "get-url", "origin"])).trim();
     return parseAzureContextFromRemote(remoteUrl);
@@ -245,7 +321,11 @@ function resolveIdArg(flag: number | undefined, positional: string[]): number | 
 export {
   DEFAULT_AREA_PATH,
   DEFAULT_TEAM,
+  azScopeArgs,
   buildWorkItemUrl,
+  contextOption,
+  getActiveContext,
+  initContext,
   extractAssignedTo,
   extractParentId,
   getDefaultAreaPath,

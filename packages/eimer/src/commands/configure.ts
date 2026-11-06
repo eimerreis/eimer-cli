@@ -101,6 +101,7 @@ async function promptForConfig(
   })).trim();
 
   return pruneEmpty({
+    ...current,
     teams: {
       webhookUrl,
     },
@@ -150,6 +151,9 @@ function setConfigValue(current: EimerConfig, key: ConfigKey, value: string): Ei
 
 function pruneEmpty(config: EimerConfig): EimerConfig {
   return {
+    // Contexts are managed via `task context` / config.json and must survive configure runs.
+    defaultContext: config.defaultContext || undefined,
+    contexts: config.contexts && Object.keys(config.contexts).length > 0 ? config.contexts : undefined,
     teams: config.teams?.webhookUrl ? { webhookUrl: config.teams.webhookUrl } : undefined,
     task:
       config.task?.defaultTeam || config.task?.defaultAreaPath

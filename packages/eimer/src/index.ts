@@ -4,7 +4,7 @@ import configureCommand from "./commands/configure";
 import { listCommand as pipelineListCommand, openCommand as pipelineOpenCommand, runsCommand, showCommand as pipelineShowCommand, triggerCommand, watchCommand } from "@scripts/pipeline/commands";
 import { commentsCommand, copyCommand, createCommand as createPrCommand, listCommand as listPrCommand, openCommand as openPrCommand, showCommand as showPrCommand } from "@scripts/pr/commands";
 import { approveCommand, changelogCommand } from "@scripts/release/commands";
-import { closeCommand, createCommand as createTaskCommand, listCommand as listTaskCommand, recentCommand, showCommand as showTaskCommand, startCommand } from "@scripts/task/commands";
+import { closeCommand, contextCommand as taskContextCommand, createCommand as createTaskCommand, listCommand as listTaskCommand, recentCommand, showCommand as showTaskCommand, startCommand } from "@scripts/task/commands";
 
 const cli = await createCLI({
   name: "eimer",
@@ -33,7 +33,7 @@ const releaseCommand = {
 const taskCommand = {
   name: "task",
   description: "Task commands",
-  commands: [createTaskCommand, listTaskCommand, recentCommand, startCommand, closeCommand, showTaskCommand],
+  commands: [createTaskCommand, listTaskCommand, recentCommand, startCommand, closeCommand, showTaskCommand, taskContextCommand],
 } as any;
 
 cli.command(prCommand);
