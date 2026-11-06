@@ -36,6 +36,8 @@ enum Commands {
     Pipeline(commands::pipeline::PipelineArgs),
     /// Release changelogs and approvals
     Release(commands::release::ReleaseArgs),
+    /// Book PR work to codeunity time
+    Time(commands::time::TimeArgs),
     /// Manage shared CLI defaults (~/.config/eimer/config.json)
     Configure(commands::configure::ConfigureArgs),
     /// Update eimer to the latest release
@@ -70,6 +72,7 @@ fn main() -> ExitCode {
         Commands::Pr(args) => commands::pr::run(args),
         Commands::Pipeline(args) => commands::pipeline::run(args),
         Commands::Release(args) => commands::release::run(args),
+        Commands::Time(args) => commands::time::run(args),
         Commands::Configure(args) => commands::configure::run(args),
         Commands::Upgrade(args) => commands::upgrade::run(args),
         Commands::Link(args) => commands::upgrade::link(args),
