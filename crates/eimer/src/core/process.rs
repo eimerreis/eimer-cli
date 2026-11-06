@@ -151,12 +151,41 @@ pub fn copy_to_clipboard(text: &str) -> Result<()> {
     };
 
     let mut last_error = None;
-    for candidate in candidates {
-        match run_with_stdin(&candidate, text) {
+    for candidate in &candidates {
+        match run_with_stdin(candidate, text) {
             Ok(()) => return Ok(()),
+            Err(err) if is_not_found(&err) => {}
             Err(err) => last_error = Some(err),
         }
     }
-    Err(last_error.unwrap_or_else(|| anyhow!("no clipboard tool found")))
-        .context("Failed to copy to clipboard")
+    match last_error {
+        Some(err) => Err(err).context("Failed to copy to clipboard"),
+        None => Err(NoClipboard.into()),
+    }
+}
+
+/// No clipboard tool is installed (headless machine, SSH session).
+#[derive(Debug)]
+pub struct NoClipboard;
+
+impl std::fmt::Display for NoClipboard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let tools = if cfg!(target_os = "macos") {
+            "pbcopy"
+        } else if cfg!(windows) {
+            "clip"
+        } else {
+            "wl-copy, xclip or xsel"
+        };
+        write!(f, "No clipboard tool found (install {tools})")
+    }
+}
+
+impl std::error::Error for NoClipboard {}
+
+fn is_not_found(err: &anyhow::Error) -> bool {
+    err.chain().any(|e| {
+        e.downcast_ref::<std::io::Error>()
+            .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
+    })
 }

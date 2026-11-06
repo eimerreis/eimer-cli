@@ -74,8 +74,9 @@ fn configure(args: ConfigureArgs) -> Result<()> {
     }
 
     let mut config = load_config()?;
+    // Enter keeps the current value (or leaves an unset field empty), like the TS wizard.
     let ask = |message: &str, current: Option<&String>| -> Result<String> {
-        prompt::text(message, current.map(String::as_str), |_| None)
+        prompt::text_or(message, current.map_or("", String::as_str), |_| None)
     };
     let webhook = ask(
         "Teams webhook URL",

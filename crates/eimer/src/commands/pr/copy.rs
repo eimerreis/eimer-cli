@@ -7,7 +7,7 @@ use serde::Serialize;
 use super::shared::{Platform, Target, TargetArgs, Warnings};
 use super::{azdo, github};
 use crate::core::azure::{parse_remote, parse_repo_name};
-use crate::core::process::copy_to_clipboard;
+use crate::core::process::{NoClipboard, copy_to_clipboard};
 use crate::core::ui;
 
 #[derive(Args)]
@@ -54,18 +54,32 @@ pub fn run(args: CopyArgs) -> Result<()> {
         };
 
         let markdown = markdown_link(&pr);
-        ui::spin_unless(args.json, "Copying pull request link", || {
+        let copied = match ui::spin_unless(args.json, "Copying pull request link", || {
             copy_to_clipboard(&markdown)
-        })?;
+        }) {
+            Ok(()) => true,
+            // Headless/SSH: still give the user the link instead of failing.
+            Err(err) if err.downcast_ref::<NoClipboard>().is_some() => {
+                if !args.json {
+                    ui::print_warning(&err.to_string(), None);
+                }
+                false
+            }
+            Err(err) => return Err(err),
+        };
 
         if args.json {
             return ui::print_json(&CopyOutput {
-                copied: true,
+                copied,
                 text: &markdown,
                 pr: &pr,
             });
         }
-        ui::print_success(&format!("Copied to clipboard: {markdown}"));
+        if copied {
+            ui::print_success(&format!("Copied to clipboard: {markdown}"));
+        } else {
+            println!("{markdown}");
+        }
         Ok(())
     })()
     .context("Failed to copy PR link")

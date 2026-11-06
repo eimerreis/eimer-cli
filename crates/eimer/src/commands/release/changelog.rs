@@ -18,7 +18,7 @@ use super::teams_review::review_teams_markdown;
 use super::teams_webhook::{TeamsPostInput, post_changelog_to_teams};
 use super::util::is_interactive_terminal;
 use crate::core::error::HintExt;
-use crate::core::process::copy_to_clipboard;
+use crate::core::process::{NoClipboard, copy_to_clipboard};
 use crate::core::{prompt, ui};
 
 #[derive(Args)]
@@ -331,10 +331,15 @@ fn changelog(args: ChangelogArgs) -> Result<()> {
     println!("{markdown}");
 
     if !args.no_copy && interactive {
-        ui::with_spinner("Copying changelog to clipboard", || {
+        match ui::with_spinner("Copying changelog to clipboard", || {
             copy_to_clipboard(&markdown)
-        })?;
-        ui::print_success("Copied changelog to clipboard.");
+        }) {
+            Ok(()) => ui::print_success("Copied changelog to clipboard."),
+            Err(err) if err.downcast_ref::<NoClipboard>().is_some() => {
+                ui::print_warning(&err.to_string(), Some("Pass --no-copy to skip copying."));
+            }
+            Err(err) => return Err(err),
+        }
     } else if !args.no_copy {
         ui::print_info("Skipped clipboard copy in non-interactive mode.", None);
     }

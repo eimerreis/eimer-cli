@@ -206,7 +206,8 @@ impl AzurePolicy {
 
 pub fn normalize_github_check_status(bucket: Option<&str>, state: Option<&str>) -> CheckStatus {
     match bucket.unwrap_or_default().to_lowercase().as_str() {
-        "pass" => return CheckStatus::Pass,
+        // Skipped checks don't block merging (same as gh).
+        "pass" | "skipping" => return CheckStatus::Pass,
         "fail" | "cancel" => return CheckStatus::Fail,
         "pending" => return CheckStatus::Pending,
         _ => {}
@@ -244,6 +245,65 @@ pub fn summarize_check_status(
         CheckStatus::Pass
     } else {
         CheckStatus::Unknown
+    }
+}
+
+/// One entry of `gh pr view --json statusCheckRollup`: a check run or a commit status.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RollupItem {
+    // CheckRun
+    pub name: Option<String>,
+    pub status: Option<String>,
+    pub conclusion: Option<String>,
+    pub details_url: Option<String>,
+    pub workflow_name: Option<String>,
+    // StatusContext
+    pub context: Option<String>,
+    pub state: Option<String>,
+    pub target_url: Option<String>,
+}
+
+/// gh's check buckets: pass, fail, pending, skipping, cancel.
+pub fn rollup_bucket(item: &RollupItem) -> &'static str {
+    if let Some(state) = item.state.as_deref() {
+        return match state.to_ascii_uppercase().as_str() {
+            "SUCCESS" => "pass",
+            "PENDING" | "EXPECTED" => "pending",
+            _ => "fail",
+        };
+    }
+    if !item
+        .status
+        .as_deref()
+        .is_some_and(|s| s.eq_ignore_ascii_case("COMPLETED"))
+    {
+        return "pending";
+    }
+    match item
+        .conclusion
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_uppercase()
+        .as_str()
+    {
+        "SUCCESS" | "NEUTRAL" => "pass",
+        "SKIPPED" => "skipping",
+        "CANCELLED" => "cancel",
+        _ => "fail",
+    }
+}
+
+impl From<RollupItem> for GitHubCheck {
+    fn from(item: RollupItem) -> Self {
+        let bucket = rollup_bucket(&item).to_string();
+        GitHubCheck {
+            name: item.name.or(item.context),
+            bucket: Some(bucket),
+            state: item.conclusion.or(item.state),
+            link: item.details_url.or(item.target_url),
+            workflow: item.workflow_name,
+        }
     }
 }
 

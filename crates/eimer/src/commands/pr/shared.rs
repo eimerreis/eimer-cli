@@ -1,12 +1,9 @@
 //! Shared PR helpers: platform detection, PR target resolution (id/branch/repo),
 //! GitHub remote parsing and small process helpers the core does not provide.
 
-use std::process::{Command, Stdio};
-
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use clap::Args;
 use serde::Serialize;
-use serde::de::DeserializeOwned;
 
 use crate::core::error::{HintExt, Hinted};
 use crate::core::process::run_text;
@@ -207,37 +204,6 @@ impl Warnings {
             }
         }
     }
-}
-
-/// Runs a command and parses stdout as JSON, accepting the given exit codes.
-/// Returns `None` when stdout is empty (e.g. `gh pr checks` with no checks reported).
-pub fn run_json_allow_exit_codes<T: DeserializeOwned>(
-    cmd: &[String],
-    allowed: &[i32],
-) -> Result<Option<T>> {
-    let (program, args) = cmd.split_first().ok_or_else(|| anyhow!("empty command"))?;
-    let output = Command::new(program)
-        .args(args)
-        .stdin(Stdio::null())
-        .output()
-        .with_context(|| format!("Failed to start '{program}'. Is it installed and on PATH?"))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let code = output.status.code().unwrap_or(-1);
-    if !allowed.contains(&code) {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let detail = if stderr.trim().is_empty() {
-            stdout.trim().to_string()
-        } else {
-            stderr.trim().to_string()
-        };
-        bail!("Command failed ({}): {detail}", cmd.join(" "));
-    }
-    if stdout.trim().is_empty() {
-        return Ok(None);
-    }
-    serde_json::from_str(&stdout)
-        .map(Some)
-        .with_context(|| format!("Failed to parse JSON from '{}'", cmd.join(" ")))
 }
 
 #[cfg(test)]
