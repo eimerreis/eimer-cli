@@ -8,57 +8,45 @@ Personal developer CLI toolkit - automates Azure DevOps and GitHub workflows (PR
 - [Architecture](docs/architecture.md)
 - [Feature Specs](docs/features/)
 
-## Build
+## Layout
+- `crates/eimer` - the `eimer` CLI (Rust). All user-facing commands live here.
+- `packages/release` - TypeScript `@tapio/release`, still published to Azure Artifacts for `bunx` in company pipelines. Keep behavior in sync with `crates/eimer/src/commands/release`.
+- `packages/ui` - TS output helpers used by `packages/release`.
+- `packages/helpers` - standalone ad-hoc scripts (tsx), not part of the CLI.
+
+## Rust CLI
 
 ```bash
-# Build all CLI binaries (from root)
-bun run --filter '@scripts/eimer' build
-bun run --filter '@scripts/pr' build
-bun run --filter '@scripts/pipeline' build
-bun run --filter '@scripts/release' build
-bun run --filter '@scripts/task' build
-
-# Build a single package directly
-cd packages/<name> && bun run build
+cargo build                 # debug build -> target/debug/eimer
+cargo run -- task list      # run a command
+cargo test                  # unit tests
+cargo clippy --all-targets -- -D warnings
+cargo fmt
 ```
 
-## Dev
+Releases: bump `version` in `crates/eimer/Cargo.toml`, merge, then push tag `eimer/v<version>`. CI builds all platforms and publishes the GitHub Release.
+
+## TypeScript (`@tapio/release`)
 
 ```bash
-# Run a package in dev mode
-cd packages/<name> && bun run dev -- <command>
+cd packages/release && bun run typecheck && bun test
 ```
 
-## Typecheck
+Changes under `packages/release` require a changeset (`bunx changeset`).
 
-```bash
-# Per-package
-bun run --filter '@scripts/eimer' typecheck
-bun run --filter '@scripts/pr' typecheck
-bun run --filter '@scripts/pipeline' typecheck
-bun run --filter '@scripts/release' typecheck
-bun run --filter '@scripts/task' typecheck
-bun run --filter '@scripts/config' typecheck
-```
-
-## Test
-
-```bash
-cd packages/<name> && bun test
-```
-
-## Coding Conventions
-- **Language**: TypeScript (strict mode, ES2022, ESNext modules)
-- **Runtime**: Bun - use `Bun.spawn`, `Bun.file`, `Bun.write` directly; never use Node/npm
-- **CLI framework**: Bunli - `defineCommand`, `option`, `createCLI` from `@bunli/core`
-- **Validation**: Zod v4 for schemas and option types
-- **Modules**: ESM only (`"type": "module"`)
-- **Package manager**: Bun only - `bun install`, `bun run`, `bun test`, `bun run --filter`
+## Coding Conventions (Rust)
+- **Edition 2024**, stable toolchain
+- **CLI**: clap derive; az-style nested subcommands for modes (`task list mine`), flags for filters (`--all`, `--top`, `--json`)
+- **Command structure**: one folder per command group under `src/commands/<group>/`, one file per command plus shared helpers; each group exports `<Group>Args` and `run`
+- **Shared code**: `src/core/` (config, context, azure, process, ui, prompt, http, error). Prefer extending core over per-command duplicates.
+- **Subprocesses**: always via `core::process` (no shell); `az` scoping via `core::azure::AzScope`
+- **Errors**: `anyhow` with `.context("Failed to <verb> ...")`; attach user hints with `core::error::HintExt::hint`
+- **Output**: human output via `core::ui`; `--json` prints raw JSON with stable field names; no spinners with `--json`
+- **Tests**: `#[cfg(test)]` unit tests next to the code; smoke-test commands against fake `az`/`gh`/`git` scripts on `PATH`
+- **File size**: keep files under ~500 LOC; split as needed
 - **Commits**: Conventional Commits (`feat|fix|refactor|build|ci|chore|docs|style|perf|test`)
-- **File size**: Keep files under ~500 LOC; split/refactor as needed
-- **Subprocess pattern**: `Bun.spawn` with stdout/stderr pipe -> await `.exited` -> parse
-- **Command structure**: Each command in its own file under `src/commands/`, default-exported
-- **Exports**: Domain packages export commands via `"./commands"` entry point for composition in eimer
 
-## Pending Migrations
-- Root `package.json` scripts still use `npm --workspace` - migrate to `bun run --filter` or direct `cd packages/<name> && bun run` pattern
+## Coding Conventions (TypeScript, packages/release)
+- Bun only (`bun install`, `bun run`, `bun test`); never npm
+- Bunli for commands, Zod v4 for schemas, ESM only, strict TS
+- Bunli 0.9 needs `argumentKind: "flag"` on boolean options for bare `--flag` usage

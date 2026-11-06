@@ -96,8 +96,9 @@ const stringifyCell = (value: TableCell): string => {
 const createTable = (headers: string[], rows: TableRow[], options: CreateTableOptions = {}): TableInstance => {
   const table = new Table({
     chars: tableChars,
-    colAligns: options.colAligns,
-    colWidths: options.colWidths,
+    // cli-table3 crashes when these keys are present but undefined, so only pass them when set.
+    ...(options.colAligns ? { colAligns: options.colAligns } : {}),
+    ...(options.colWidths ? { colWidths: options.colWidths } : {}),
     head: headers.map((header) => bold(header)),
     style: {
       border: [],
