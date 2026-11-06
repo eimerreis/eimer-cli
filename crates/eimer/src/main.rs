@@ -62,7 +62,14 @@ fn multicall_args(args: Vec<OsString>) -> Vec<OsString> {
     }
 }
 
+/// Prompts (dialoguer) hide the cursor while a selection list is shown. If Ctrl-C kills
+/// the process mid-prompt, restore the cursor so the user's shell isn't left without one.
+fn install_interrupt_handler() {
+    let _ = ctrlc::set_handler(|| core::prompt::exit_cancelled());
+}
+
 fn main() -> ExitCode {
+    install_interrupt_handler();
     let cli = Cli::parse_from(multicall_args(std::env::args_os().collect()));
 
     let result = match cli.command {
