@@ -73,9 +73,7 @@ pub fn asset_name() -> Result<String> {
 }
 
 fn client() -> Result<reqwest::blocking::Client> {
-    Ok(reqwest::blocking::Client::builder()
-        .user_agent(concat!("eimer/", env!("CARGO_PKG_VERSION")))
-        .build()?)
+    Ok(crate::core::http::builder().build()?)
 }
 
 fn get(client: &reqwest::blocking::Client, url: &str) -> Result<reqwest::blocking::Response> {
@@ -97,6 +95,11 @@ fn get(client: &reqwest::blocking::Client, url: &str) -> Result<reqwest::blockin
     Ok(response)
 }
 
+/// GitHub API base; `EIMER_GITHUB_API` overrides it (mirrors, tests).
+fn github_api() -> String {
+    std::env::var("EIMER_GITHUB_API").unwrap_or_else(|_| "https://api.github.com".into())
+}
+
 fn parse_tag(tag: &str) -> Option<semver::Version> {
     semver::Version::parse(tag.strip_prefix(TAG_PREFIX)?).ok()
 }
@@ -108,7 +111,7 @@ fn find_release(
 ) -> Result<(semver::Version, Release)> {
     let releases: Vec<Release> = get(
         client,
-        &format!("https://api.github.com/repos/{REPO}/releases?per_page=50"),
+        &format!("{}/repos/{REPO}/releases?per_page=50", github_api()),
     )?
     .json()?;
     select_release(releases, version).ok_or_else(|| match version {

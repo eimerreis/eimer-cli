@@ -46,17 +46,32 @@ impl<T, E: Into<anyhow::Error>> HintExt<T> for Result<T, E> {
     }
 }
 
+/// The most specific (innermost) hint attached anywhere in the error chain.
+fn find_hint(err: &anyhow::Error) -> Option<&str> {
+    err.chain()
+        .find_map(|e| e.downcast_ref::<Hinted>())
+        .map(|hinted| find_hint(&hinted.source).unwrap_or(&hinted.hint))
+}
+
 /// Prints an error (with hint if present) and returns the process exit code.
 pub fn report(err: &anyhow::Error) -> i32 {
     if let Some(SilentExit(code)) = err.downcast_ref::<SilentExit>() {
         return *code;
     }
-    match err.chain().find_map(|e| e.downcast_ref::<Hinted>()) {
-        Some(hinted) => {
-            // Context added on top of the hinted error is still part of the message.
-            super::ui::print_error(&format!("{err:#}"), Some(&hinted.hint));
-        }
-        None => super::ui::print_error(&format!("{err:#}"), None),
-    }
+    super::ui::print_error(&format!("{err:#}"), find_hint(err));
     1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::{Context, anyhow};
+
+    #[test]
+    fn innermost_hint_wins_and_message_keeps_context() {
+        let inner: anyhow::Result<()> = Err(anyhow!("boom")).hint("specific");
+        let err = inner.context("Failed to do X").hint("general").unwrap_err();
+        assert_eq!(find_hint(&err), Some("specific"));
+        assert_eq!(format!("{err:#}"), "Failed to do X: boom");
+    }
 }

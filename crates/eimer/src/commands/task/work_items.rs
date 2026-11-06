@@ -30,23 +30,23 @@ impl TaskEnv {
         let config = load_config()?;
         let context = resolve_current(flag, &config)?;
 
-        if let (Some(ctx), false) = (&context, quiet) {
-            if let Some(remote) = crate::core::azure::remote_project() {
-                let scope_project = AzScope::with_context(Some(ctx.clone())).project();
-                if scope_project.is_some_and(|p| !same_project(&p, &remote)) {
-                    ui::print_warning(
-                        &format!(
-                            "Using context '{}' ({}/{}) from {}, but this repo points to {}/{}.",
-                            ctx.name,
-                            ctx.org,
-                            ctx.project,
-                            ctx.describe_source(),
-                            remote.org,
-                            remote.project
-                        ),
-                        None,
-                    );
-                }
+        if let (Some(ctx), false) = (&context, quiet)
+            && let Some(remote) = crate::core::azure::remote_project()
+        {
+            let scope_project = AzScope::with_context(Some(ctx.clone())).project();
+            if scope_project.is_some_and(|p| !same_project(&p, &remote)) {
+                ui::print_warning(
+                    &format!(
+                        "Using context '{}' ({}/{}) from {}, but this repo points to {}/{}.",
+                        ctx.name,
+                        ctx.org,
+                        ctx.project,
+                        ctx.describe_source(),
+                        remote.org,
+                        remote.project
+                    ),
+                    None,
+                );
             }
         }
 
@@ -221,10 +221,10 @@ impl WorkItem {
             if !rel.to_lowercase().contains(kind) {
                 continue;
             }
-            if let Some(id) = url.rsplit('/').next().and_then(|s| s.parse().ok()) {
-                if !ids.contains(&id) {
-                    ids.push(id);
-                }
+            if let Some(id) = url.rsplit('/').next().and_then(|s| s.parse().ok())
+                && !ids.contains(&id)
+            {
+                ids.push(id);
             }
         }
         ids

@@ -52,14 +52,3 @@ pub fn select(message: &str, items: &[String], default: usize) -> Result<usize> 
         .default(default)
         .interact()?)
 }
-
-/// Yes/no confirmation.
-pub fn confirm(message: &str, default: bool) -> Result<bool> {
-    if !is_interactive() {
-        return Ok(default);
-    }
-    Ok(dialoguer::Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt(message)
-        .default(default)
-        .interact()?)
-}

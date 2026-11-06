@@ -5,7 +5,7 @@ use std::io::IsTerminal;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use comfy_table::{ContentArrangement, Table};
+use comfy_table::{ContentArrangement, ContentLineStyle, LineStyle, Table, TableStyle};
 use indicatif::{ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize;
 
@@ -106,6 +106,15 @@ pub fn print_error(message: &str, hint: Option<&str>) {
     }
 }
 
+/// `+---+---+` borders between every row, matching the former cli-table3 output.
+const TABLE_STYLE: TableStyle = TableStyle::new()
+    .top_border(LineStyle::new('+', '-', '+', '+'))
+    .header_lines(ContentLineStyle::new('|', '|', '|'))
+    .header_separator(LineStyle::new('+', '-', '+', '+'))
+    .content_lines(ContentLineStyle::new('|', '|', '|'))
+    .row_separator(LineStyle::new('+', '-', '+', '+'))
+    .bottom_border(LineStyle::new('+', '-', '+', '+'));
+
 /// Bordered ASCII table that wraps to the terminal width.
 pub fn render_table<H, R, C>(headers: H, rows: R) -> String
 where
@@ -115,6 +124,7 @@ where
     C: Into<String>,
 {
     let mut table = Table::new();
+    table.load_style(TABLE_STYLE);
     table.set_content_arrangement(ContentArrangement::Dynamic);
     if let Some((terminal_size::Width(width), _)) = terminal_size::terminal_size() {
         table.set_width(width);

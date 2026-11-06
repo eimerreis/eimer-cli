@@ -107,16 +107,16 @@ pub fn parse_remote(remote: &str) -> Option<AzureProject> {
             }
         }
         // https://{org}.visualstudio.com/{project}/_git/{repo}
-        if let Some((host, path)) = rest.split_once('/') {
-            if let Some(org) = host.strip_suffix(".visualstudio.com") {
-                let parts: Vec<&str> = path.split('/').collect();
-                if parts.len() >= 3 && parts[1].eq_ignore_ascii_case("_git") {
-                    return Some(make(
-                        org,
-                        parts[0],
-                        format!("https://{org}.visualstudio.com/{}", parts[0]),
-                    ));
-                }
+        if let Some((host, path)) = rest.split_once('/')
+            && let Some(org) = host.strip_suffix(".visualstudio.com")
+        {
+            let parts: Vec<&str> = path.split('/').collect();
+            if parts.len() >= 3 && parts[1].eq_ignore_ascii_case("_git") {
+                return Some(make(
+                    org,
+                    parts[0],
+                    format!("https://{org}.visualstudio.com/{}", parts[0]),
+                ));
             }
         }
         return None;
@@ -135,18 +135,17 @@ pub fn parse_remote(remote: &str) -> Option<AzureProject> {
         }
     }
     // {user}@{org}.vs-ssh.visualstudio.com:v3/{org}/{project}/{repo}
-    if let Some((_, host_path)) = ssh.split_once('@') {
-        if let Some((host, path)) = host_path.split_once(":v3/") {
-            if let Some(org) = host.strip_suffix(".vs-ssh.visualstudio.com") {
-                let parts: Vec<&str> = path.split('/').collect();
-                if parts.len() >= 3 {
-                    return Some(make(
-                        org,
-                        parts[1],
-                        format!("https://{org}.visualstudio.com/{}", parts[1]),
-                    ));
-                }
-            }
+    if let Some((_, host_path)) = ssh.split_once('@')
+        && let Some((host, path)) = host_path.split_once(":v3/")
+        && let Some(org) = host.strip_suffix(".vs-ssh.visualstudio.com")
+    {
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() >= 3 {
+            return Some(make(
+                org,
+                parts[1],
+                format!("https://{org}.visualstudio.com/{}", parts[1]),
+            ));
         }
     }
     None

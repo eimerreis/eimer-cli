@@ -47,14 +47,15 @@ pub fn run(ctx: Option<&str>, args: ShowArgs) -> Result<()> {
             load_chain(&env, id, !args.no_parents)
         })?;
 
-        if let Some(root) = chain.first() {
-            if !args.allow_non_task && !root.item_type.eq_ignore_ascii_case("task") {
-                bail!(
-                    "Work item #{} is '{}', not 'Task'. Pass --allow-non-task to show it anyway.",
-                    root.id,
-                    root.item_type
-                );
-            }
+        if let Some(root) = chain.first()
+            && !args.allow_non_task
+            && !root.item_type.eq_ignore_ascii_case("task")
+        {
+            bail!(
+                "Work item #{} is '{}', not 'Task'. Pass --allow-non-task to show it anyway.",
+                root.id,
+                root.item_type
+            );
         }
 
         if args.json {
