@@ -3,7 +3,7 @@
 use std::io::IsTerminal;
 
 use anyhow::{Result, bail};
-use dialoguer::{Input, Select, theme::ColorfulTheme};
+use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
 
 pub fn is_interactive() -> bool {
     std::io::stdin().is_terminal() && std::io::stderr().is_terminal()
@@ -103,6 +103,19 @@ pub fn select(message: &str, items: &[String], default: usize) -> Result<usize> 
         Select::with_theme(&ColorfulTheme::default())
             .with_prompt(message)
             .items(items)
+            .default(default)
+            .interact(),
+    )
+}
+
+/// Yes/no confirmation. Callers must handle the non-interactive case themselves.
+pub fn confirm(message: &str, default: bool) -> Result<bool> {
+    if !is_interactive() {
+        bail!("{message}: confirmation required (no interactive terminal to prompt)");
+    }
+    finish(
+        Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt(message)
             .default(default)
             .interact(),
     )
