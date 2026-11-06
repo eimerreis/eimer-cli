@@ -1,157 +1,114 @@
 # Architecture
 
 ## Overview
-Monorepo of Bun-native CLI tools organized as npm workspaces. Each domain (pr, pipeline, release, task) is a self-contained package that can run standalone or be composed into the `eimer` meta-CLI. All Azure DevOps interaction is delegated to the `az` CLI via subprocess invocation.
+`eimer` is a single Rust binary (`crates/eimer`) with command groups for tasks, pull requests, pipelines and releases. All Azure DevOps interaction for tasks, PRs and pipelines is delegated to the `az` CLI via subprocesses; GitHub PRs use `gh`; the release commands call the Azure DevOps REST API directly (so they work in CI without `az`).
+
+The TypeScript release CLI (`packages/release`) remains in the repo because it is published as `@tapio/release` to Azure Artifacts and run via `bunx` in company pipelines. `packages/ui` is its only workspace dependency; `packages/helpers` holds standalone scripts outside the CLI.
 
 ## System Diagram
 
 ```mermaid
 graph TB
-    subgraph "bin/ (native binaries)"
+    subgraph "Installed binary"
         EIMER[eimer]
-        PR_BIN[pr]
-        PIPE_BIN[pipeline]
-        REL_BIN[release]
-        TASK_BIN[task]
+        LINKS["task / pr / pipeline / release<br/>(symlinks or .cmd shims)"]
     end
 
-    subgraph "packages/"
-        subgraph "@scripts/eimer"
-            META[Meta CLI<br/>composes all commands]
+    subgraph "crates/eimer/src"
+        MAIN[main.rs<br/>clap CLI + multi-call dispatch]
+        subgraph "commands/"
+            TASK[task]
+            PR[pr]
+            PIPE[pipeline]
+            REL[release]
+            CFGCMD[configure]
+            UPG[upgrade / link]
         end
-        subgraph "@scripts/pr"
-            PR[create, comments, copy,<br/>list, open, show]
-        end
-        subgraph "@scripts/pipeline"
-            PIPE[runs, list, open,<br/>show, trigger, watch]
-        end
-        subgraph "@scripts/release"
-            REL[changelog, approve]
-        end
-        subgraph "@scripts/task"
-            TASK[create, list, recent,<br/>start, close, show]
-        end
-        subgraph "@scripts/config"
-            CFG["Config loader<br/>~/.config/eimer/config.json"]
-        end
-        subgraph "@scripts/helpers"
-            HELP[Ad-hoc scripts<br/>music, i18n]
+        subgraph "core/"
+            CTX[context<br/>.eimerrc resolution]
+            CFG["config<br/>~/.config/eimer/config.json"]
+            AZ[azure<br/>AzScope, remotes]
+            PROC[process<br/>subprocess, open, clipboard]
+            UI[ui<br/>tables, colors, spinners]
+            HTTP[http<br/>reqwest + rustls/ring]
         end
     end
 
     subgraph "External"
-        AZ[az CLI]
-        GH[gh CLI / GitHub API]
+        AZCLI[az CLI]
+        GH[gh CLI]
         GIT[git]
-        TEAMS[Teams Webhooks]
+        ADO[Azure DevOps REST]
+        TEAMS[Teams webhooks]
+        GHREL[GitHub Releases]
     end
 
-    EIMER --> META
-    PR_BIN --> PR
-    PIPE_BIN --> PIPE
-    REL_BIN --> REL
-    TASK_BIN --> TASK
-
-    META --> PR
-    META --> PIPE
-    META --> REL
-    META --> TASK
-
-    REL --> CFG
-    TASK --> CFG
-    META --> CFG
-
-    PR --> AZ
-    PR --> GIT
-    PR --> GH
-    PIPE --> AZ
-    PIPE --> GIT
-    REL --> AZ
-    REL --> TEAMS
-    TASK --> AZ
-    TASK --> GIT
+    LINKS --> EIMER --> MAIN
+    MAIN --> TASK & PR & PIPE & REL & CFGCMD & UPG
+    TASK --> CTX --> CFG
+    TASK & PR & PIPE --> AZ --> PROC
+    PROC --> AZCLI & GH & GIT
+    REL --> HTTP --> ADO & TEAMS
+    UPG --> HTTP --> GHREL
 ```
 
 ## Components
 
-### `@scripts/eimer` - Meta CLI
-- Imports command definitions from all domain packages
-- Registers them as subcommand groups (`pr`, `pipeline`, `release`, `task`, `configure`)
-- Compiles to single `bin/eimer` native binary
+### `main.rs`: CLI entry
+- clap derive definition of all command groups (`task`, `pr`, `pipeline`, `release`, `configure`, `upgrade`, `link`)
+- Multi-call: if invoked as `task`, `pr`, `pipeline` or `release` (symlink or `.cmd` shim), it behaves like `eimer <name>`
+- Errors bubble up as `anyhow::Error`; `core::error::report` prints them (with the innermost hint) and sets the exit code
 
-### `@scripts/pr` - PR Workflows
-- Dual-platform: Azure DevOps (via `az repos pr`) and GitHub (via `gh` or API)
-- Auto-detects platform from git remote URL
-- Commands: create (with auto-complete + squash), comments, copy, list, open, show
+### `commands/task`
+- Work items via `az boards`, scoped by the active context (`--context` > `EIMER_CONTEXT` > nearest `.eimerrc` > `defaultContext`, else `--detect true`)
+- `list mine|team|children` (bare `list` = `mine`), `create`, `recent`, `start`, `close`, `show`, `context show|list|use`
+- See [feature 007](features/007-task-contexts-and-az-style-commands.md)
 
-### `@scripts/pipeline` - Pipeline Operations
-- Azure DevOps builds via `az pipelines` CLI
-- Auto-detects repo from git remote; supports Azure DevOps + GitHub-hosted repos
-- Commands: runs, list, open, show, trigger, watch (polling)
+### `commands/pr`
+- Azure DevOps (`az repos pr`, threads via REST with the `az` access token) and GitHub (`gh`)
+- `create`, `comments`, `copy`, `list`, `open`, `show`
 
-### `@scripts/release` - Release Workflows
-- Changelog generation from pipeline commit ranges
-- Teams webhook posting (Adaptive Card with MessageCard fallback)
-- Editor integration (VS Code save-to-post flow)
-- Commands: changelog, approve
-- Also published as `@tapio/release` via Azure Artifacts (see [feature spec](features/001-release-publish.md))
+### `commands/pipeline`
+- `az pipelines` runs/list/open/show/trigger/watch, filtered to the current repo
 
-### `@scripts/task` - Task Management
-- Azure DevOps work items via `az boards`
-- Context-aware: every `az` call is scoped to the active context's org/project, or `--detect true` when no context is active
-- Defaults (team, area path) from the active context, then config, then built-in fallbacks
-- Current sprint iteration detection
-- Commands: create, list (mine/team/children), recent, start, close, show, context (show/list/use)
+### `commands/release`
+- `changelog` (commit range between production releases, grouped conventional commits, Teams posting), `approve`, `configure`
+- Config at `~/.config/tapio-release/config.json`, shared with the TS `@tapio/release`
+- Auth: `SYSTEM_ACCESSTOKEN` > `AZURE_DEVOPS_PAT` > `az`; context: `SYSTEM_COLLECTIONURI` + `SYSTEM_TEAMPROJECT` > `az devops configure` > git remote
 
-### `@scripts/config` - Shared Configuration
-- Read/write `~/.config/eimer/config.json`
-- Zod-validated schema: contexts, teams webhook, task defaults, release defaults
-- Context resolution (`resolveContext`): `--context` flag > `EIMER_CONTEXT` > nearest `.eimerrc` > `defaultContext` (see [feature spec](features/007-task-contexts-and-az-style-commands.md))
-- Consumed by release, task, and eimer packages
+### `commands/upgrade`
+- `upgrade [--check] [--to <version>] [--force]`: finds the newest `eimer/v*` GitHub Release, downloads the asset for the current platform, verifies its `.sha256`, replaces itself (`self-replace`)
+- `link [--dir] [--remove]`: creates the multi-call symlinks (`.cmd` shims on Windows)
 
-### `@scripts/helpers` - Utility Scripts
-- Standalone scripts not part of the eimer CLI
-- Music collection/tagging, i18n duplicate detection
-- Uses tsx + execa (separate toolchain from Bunli packages)
+### `core/`
+- `config`: typed `config.json` with unknown keys preserved on save
+- `context`: `.eimerrc` discovery and precedence (pure `select_context` is unit-tested)
+- `azure`: `AzScope` (`--org/--project` vs `--detect true`), remote parsing, work item URLs, WIQL escaping
+- `process`: `run_text` / `run_json` / `run_inherit`, cross-platform `open_url` and `copy_to_clipboard`; never uses a shell
+- `ui`: gh-style output (colored symbols, ASCII tables wrapping to terminal width, spinners on stderr, OSC 8 links)
+- `prompt`: dialoguer prompts that fail fast without a TTY
+- `http`: shared reqwest client; installs the rustls `ring` provider
 
 ## Data Flow
 
-### Typical Command (e.g., `eimer pr create "feat: new thing"`)
-1. `eimer` binary -> loads meta CLI -> dispatches to `@scripts/pr` create command
-2. Command reads current git branch via `Bun.spawn(["git", "branch", "--show-current"])`
-3. Parses repo name from `git remote get-url origin`
-4. Ensures branch is pushed to remote
-5. Creates PR via `az repos pr create` -> parses JSON response
-6. Enables auto-complete via `az repos pr update`
-7. Opens PR URL in browser via `open`
+### Typical command (`task list mine`)
+1. `main` parses args (clap); `--context` is a global flag on `task`
+2. `TaskEnv::init` loads config, resolves the context, warns if it differs from the repo's Azure DevOps remote
+3. Looks up the team's current iteration (`az boards iteration team list`), runs a WIQL query (`az boards query`)
+4. Renders a table, or prints JSON with `--json`
 
-### Config Flow
-1. Commands call `loadConfig()` from `@scripts/config`
-2. Reads `~/.config/eimer/config.json` -> Zod-parses -> returns typed config
-3. Commands use config values as defaults, with hardcoded fallbacks
-4. Task commands additionally call `initContext()` first, which resolves the active context and scopes all `az` calls to it
+## Distribution
+- `.github/workflows/release-eimer.yml`: on tag `eimer/v<version>` builds static musl Linux (x86_64/aarch64 via cargo-zigbuild), macOS (x86_64/aarch64) and Windows (x86_64) binaries, uploads `eimer-<target>[.exe]` + `.sha256` + `SHA256SUMS` to a GitHub Release
+- `install.sh` (Linux/macOS) and `install.ps1` (Windows) install the latest (or `EIMER_VERSION`) release, verify the checksum, run `eimer link`, and check for `az`
+- `eimer upgrade` updates in place
+- `.github/workflows/rust.yml`: fmt, clippy `-D warnings`, tests on Linux/macOS/Windows
 
-## Deployment
-
-### Local (personal)
-- Native binaries in `bin/` built via `bunli build --native`
-- Build: `bunli build --native --outfile ../../bin/<name>` per package
-- Binaries symlinked or PATH'd from `bin/` directory
-
-### Azure Artifacts (company)
-- `@scripts/release` published as `@tapio/release` to Azure Artifacts
-- GitHub Actions workflow triggered by pushes to `main` with pending Changesets
-- Changesets bumps `packages/release/package.json`, writes changelog, commits release metadata, and tags `release/v<version>`
-- Build: `bun build --target bun` -> single bundled JS with all deps inlined
-- Publish: rewrite `package.json` (name -> `@tapio/release`, version from Changesets, strip deps) -> `npm publish`
-- Registry settings from GitHub environment `tapioone-azdevops` secrets (`AZDEVOPS_ORGANIZATION`, `AZDEVOPS_PROJECT`, `AZDEVOPS_PACKAGEFEED`, auth token)
-- GitHub Release created from the package changelog entry for that version
+### `@tapio/release` (company, TypeScript)
+- `packages/release` published to Azure Artifacts by `.github/workflows/publish-release.yml` (Changesets, tags `release/v<version>`)
 - Consumers: `bunx @tapio/release changelog --pipeline "..."`
-- See [feature spec](features/001-release-publish.md) for full details
+- See [feature spec](features/001-release-publish.md)
 
 ## Notable Patterns & Technical Debt
-- **Duplicated `runText`/`runJson` utilities** - identical subprocess helpers exist in `pr`, `pipeline`, and `task` packages independently (candidate for extraction to shared package)
-- **Duplicated `terminalLink`/`formatRelativeTime`** - same formatting utilities across packages
-- **`helpers` uses different toolchain** - tsx + cmd-ts vs Bunli; could be migrated for consistency
-- **`as any` casts** in eimer's command registration - likely Bunli type gap for nested command groups
-- **Root `package.json` scripts use `npm --workspace`** - should be migrated to `bun run --filter` or direct `cd && bun run` pattern
+- **Release logic exists twice** (Rust `commands/release` and TS `packages/release`) until company pipelines move to the binary
+- **`helpers` uses a different toolchain** (tsx + cmd-ts)
+- **`package-lock.json`** is a stale npm artifact; Bun (`bun.lock`) is authoritative for the TS packages
