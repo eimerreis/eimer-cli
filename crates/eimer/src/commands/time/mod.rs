@@ -8,6 +8,7 @@ mod auth;
 mod block;
 mod book;
 mod duration;
+mod loopback;
 mod repo;
 mod store;
 mod suggest;

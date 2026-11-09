@@ -1,8 +1,8 @@
 //! codeunity Keycloak login (OIDC authorization code + PKCE) and token refresh.
 //!
-//! Until a dedicated CLI client exists, the Raycast extension's public client is used.
-//! Keycloak only accepts the Raycast redirect for it, so the user pastes the redirect
-//! URL (holding the code) back into the terminal.
+//! The redirect lands on a local port that eimer listens on. For a non-loopback
+//! redirect URI (e.g. the Raycast extension's client) the user pastes the redirect
+//! URL back into the terminal instead.
 
 use anyhow::{Context, Result, anyhow, bail};
 use reqwest::Url;
@@ -13,8 +13,8 @@ use crate::core::error::HintExt;
 use crate::core::{http, process, prompt, ui};
 
 const OIDC_URL: &str = "https://login.codeunity.de/realms/codeunity/protocol/openid-connect";
-const DEFAULT_CLIENT_ID: &str = "raycast";
-const DEFAULT_REDIRECT_URI: &str = "https://raycast.com/redirect?packageName=Extension";
+const DEFAULT_CLIENT_ID: &str = "time-cli-moritz";
+const DEFAULT_REDIRECT_URI: &str = "http://localhost:1995/callback";
 const SCOPE: &str = "openid profile email offline_access";
 const EXPIRY_MARGIN_SECS: i64 = 60;
 const LOGIN_HINT: &str = "Run `eimer time login` in a terminal.";
@@ -162,20 +162,30 @@ pub fn login() -> Result<()> {
         ("code_challenge_method", "S256"),
     ]);
 
-    ui::print_info(
-        "Opening the codeunity login in your browser.",
-        Some(&format!("If it does not open, visit: {url}")),
-    );
-    let _ = process::open_url(url.as_str());
-    ui::print_info(
-        "After login the browser lands on raycast.com (Raycast may pop up; ignore it).",
-        None,
-    );
-    let pasted = prompt::text("Paste the full URL from the address bar", None, |v| {
-        v.trim().is_empty().then(|| "URL is required".to_string())
-    })?;
-
-    let code = extract_code(&pasted, &state)?;
+    let code = if super::loopback::is_loopback(&redirect_uri) {
+        // Listen before opening the browser so a fast redirect is not missed.
+        let callback = super::loopback::Callback::bind(&redirect_uri)?;
+        ui::print_info(
+            "Opening the codeunity login in your browser.",
+            Some(&format!("If it does not open, visit: {url}")),
+        );
+        let _ = process::open_url(url.as_str());
+        extract_code(callback.wait()?.as_str(), &state)?
+    } else {
+        ui::print_info(
+            "Opening the codeunity login in your browser.",
+            Some(&format!("If it does not open, visit: {url}")),
+        );
+        let _ = process::open_url(url.as_str());
+        ui::print_info(
+            "After login, copy the URL from the browser's address bar.",
+            None,
+        );
+        let pasted = prompt::text("Paste the full redirect URL", None, |v| {
+            v.trim().is_empty().then(|| "URL is required".to_string())
+        })?;
+        extract_code(&pasted, &state)?
+    };
     let token = request_token(&[
         ("grant_type", "authorization_code"),
         ("code", &code),

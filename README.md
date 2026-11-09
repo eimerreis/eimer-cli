@@ -57,7 +57,7 @@ Time: none (internal tooling)  # explicitly not billable
 ```
 
 ```bash
-eimer time login                 # interactive: paste the redirect URL back into the terminal
+eimer time login                 # opens the browser, receives the redirect on localhost:1995
 eimer time projects              # find the project id
 eimer time init <projectId>      # writes .time.json in the repo (commit it)
 eimer time suggest               # duration suggestion from the PR's commits
@@ -66,7 +66,7 @@ eimer time none "internal tooling"
 eimer time status                # exit 1 when the PR has no valid Time line
 ```
 
-- Login uses the Raycast extension's Keycloak client (`raycast`) until a dedicated CLI client exists; Keycloak only accepts the Raycast redirect, hence the paste. The token is kept in the macOS keychain (`eimer.time`; elsewhere `~/.config/eimer/time-token.json`, mode 0600) and refreshes automatically. Override with `EIMER_TIME_CLIENT_ID`, `EIMER_TIME_REDIRECT_URI`, `EIMER_TIME_API_URL`.
+- Login uses the Keycloak client `time-cli-moritz` and receives the redirect on `http://localhost:1995/callback`. The token is kept in the macOS keychain (`eimer.time`; elsewhere `~/.config/eimer/time-token.json`, mode 0600) and refreshes automatically. Override with `EIMER_TIME_CLIENT_ID`, `EIMER_TIME_REDIRECT_URI`, `EIMER_TIME_API_URL`. A non-loopback redirect URI (e.g. the Raycast extension's client) falls back to pasting the redirect URL.
 - With one project in `.time.json` no alias is needed; with several pass `--project <alias>`.
 - Rerunning `book` updates the existing record instead of booking twice; invoiced records are left alone.
 - The CI check, PR template and agent instructions for client repos live in [eimerreis/freelance-ops](https://github.com/eimerreis/freelance-ops).
