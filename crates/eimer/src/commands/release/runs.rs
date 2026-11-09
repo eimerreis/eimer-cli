@@ -4,10 +4,13 @@ use std::collections::HashSet;
 
 use anyhow::{Result, bail};
 
-use super::api::{PipelineRun, RunQuery, load_commits, load_pipeline_runs, load_run_by_id};
+use super::api::{
+    PipelineRun, RunQuery, list_pipeline_stages, load_commits, load_pipeline_runs, load_run_by_id,
+};
 use super::changelog_format::{CommitInfo, commit_from_message, short};
 use super::client::AzureDevOpsClient;
 use super::prod_stage::{ProdStageChecker, normalize_text};
+use crate::core::error::HintExt;
 
 pub fn strip_heads(branch: &str) -> String {
     match branch.get(..11) {
@@ -67,9 +70,34 @@ impl Runs<'_> {
         }
         match self.latest_prod_release_run(checker)? {
             Some(run) => Ok(run),
-            None => bail!(
-                "No successful prod release run found on {branch_display}. Configure release.prodStageName via `release configure` or pass --from <runId>."
-            ),
+            None => Err(anyhow::anyhow!(
+                "No successful prod release run found on {branch_display}."
+            ))
+            .hint(self.missing_prod_stage_hint()),
+        }
+    }
+
+    /// Suggests --prod-stage-name, listing the stages of the latest successful run if possible.
+    fn missing_prod_stage_hint(&self) -> String {
+        let stages = self
+            .latest_succeeded_run()
+            .ok()
+            .flatten()
+            .and_then(|run| list_pipeline_stages(self.client, run.id).ok())
+            .map(|stages| {
+                let mut names: Vec<String> = stages
+                    .into_iter()
+                    .filter_map(|s| [s.identifier, s.name].into_iter().find(|v| !v.is_empty()))
+                    .collect();
+                names.dedup();
+                names
+            })
+            .filter(|names| !names.is_empty());
+        let base =
+            "Pass --prod-stage-name <stage> (remembered for this pipeline) or --from <runId>.";
+        match stages {
+            Some(names) => format!("{base} Stages in the latest run: {}.", names.join(", ")),
+            None => base.to_string(),
         }
     }
 
