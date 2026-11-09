@@ -29,6 +29,9 @@ pub struct ApproveArgs {
     /// Approve all matched approvals
     #[arg(long, short = 'a')]
     all: bool,
+    /// Approve a single match without asking for confirmation (scripts, CI)
+    #[arg(long, short = 'y')]
+    yes: bool,
     /// Approval comment
     #[arg(long, short = 'c')]
     comment: Option<String>,
@@ -114,7 +117,11 @@ fn approve(args: ApproveArgs) -> Result<()> {
         return Ok(());
     }
 
-    let selected_ids = select_approval_ids(&filtered, args.all)?;
+    let explicit = args.all || args.yes || id_filter.is_some();
+    let Some(selected_ids) = select_approval_ids(&filtered, args.all, explicit)? else {
+        ui::print_info("Not approved.", None);
+        return Ok(());
+    };
     if selected_ids.is_empty() {
         ui::print_info(
             "No approval selected.",
@@ -168,14 +175,25 @@ fn approve(args: ApproveArgs) -> Result<()> {
     Ok(())
 }
 
-fn select_approval_ids(approvals: &[Approval], approve_all: bool) -> Result<Vec<String>> {
-    if approvals.len() == 1 || approve_all {
-        return Ok(approvals.iter().map(Approval::id).collect());
-    }
-    if !prompt::is_interactive() {
-        return Ok(Vec::new());
-    }
+#[derive(Debug, PartialEq, Eq)]
+enum SingleMatch {
+    Approve,
+    Confirm,
+    Refuse,
+}
 
+/// A single pending approval used to be approved without asking. Approvals gate
+/// production deployments, so require an explicit choice (`--yes`, `--id`, `--all`)
+/// or an interactive confirmation.
+fn single_match_decision(explicit: bool, interactive: bool) -> SingleMatch {
+    match (explicit, interactive) {
+        (true, _) => SingleMatch::Approve,
+        (false, true) => SingleMatch::Confirm,
+        (false, false) => SingleMatch::Refuse,
+    }
+}
+
+fn approvals_table(approvals: &[Approval]) -> String {
     let rows = approvals.iter().take(20).map(|item| {
         vec![
             item.id(),
@@ -188,9 +206,46 @@ fn select_approval_ids(approvals: &[Approval], approve_all: bool) -> Result<Vec<
                 .map_or_else(|| "unknown-time".into(), |c| to_iso_string(&c)),
         ]
     });
-    let table = ui::render_table(["Approval", "Pipeline", "Run", "Created"], rows);
+    ui::render_table(["Approval", "Pipeline", "Run", "Created"], rows)
+}
+
+/// `None` means the user declined the confirmation.
+fn select_approval_ids(
+    approvals: &[Approval],
+    approve_all: bool,
+    explicit: bool,
+) -> Result<Option<Vec<String>>> {
+    let all_ids = || Some(approvals.iter().map(Approval::id).collect());
+    if approve_all {
+        return Ok(all_ids());
+    }
+    if approvals.len() == 1 {
+        return match single_match_decision(explicit, prompt::is_interactive()) {
+            SingleMatch::Approve => Ok(all_ids()),
+            SingleMatch::Confirm => {
+                println!("{}", approvals_table(approvals));
+                if prompt::confirm("Approve this deployment?", false)? {
+                    Ok(all_ids())
+                } else {
+                    Ok(None)
+                }
+            }
+            SingleMatch::Refuse => Err(anyhow::anyhow!(
+                "Refusing to approve {} without confirmation",
+                approvals[0].id()
+            ))
+            .hint("Pass --yes (or --id <approvalId>) to approve non-interactively."),
+        };
+    }
+    if !prompt::is_interactive() {
+        return Ok(Some(Vec::new()));
+    }
+
     let raw = prompt::text(
-        &format!("Approval IDs to approve (comma-separated):\n{table}"),
+        &format!(
+            "Approval IDs to approve (comma-separated):\n{}",
+            approvals_table(approvals)
+        ),
         None,
         |v| {
             v.trim()
@@ -198,7 +253,7 @@ fn select_approval_ids(approvals: &[Approval], approve_all: bool) -> Result<Vec<
                 .then(|| "At least one approval ID is required".to_string())
         },
     )?;
-    parse_selection(&raw, approvals)
+    parse_selection(&raw, approvals).map(Some)
 }
 
 fn parse_selection(raw: &str, approvals: &[Approval]) -> Result<Vec<String>> {
@@ -242,6 +297,14 @@ mod tests {
 
     fn approvals() -> Vec<Approval> {
         vec![Approval(json!({"id": "a1"})), Approval(json!({"id": "b2"}))]
+    }
+
+    #[test]
+    fn single_match_needs_explicit_choice_or_confirmation() {
+        assert_eq!(single_match_decision(true, false), SingleMatch::Approve);
+        assert_eq!(single_match_decision(true, true), SingleMatch::Approve);
+        assert_eq!(single_match_decision(false, true), SingleMatch::Confirm);
+        assert_eq!(single_match_decision(false, false), SingleMatch::Refuse);
     }
 
     #[test]

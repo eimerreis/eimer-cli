@@ -5,14 +5,11 @@ use clap::Args;
 
 use super::azdo::{self, az};
 use super::github::{self, GitHubRepo};
-use super::shared::{
-    Platform, Target, TargetArgs, Warnings, argv, finish, run_json_allow_exit_codes,
-    strip_ref_prefix,
-};
+use super::shared::{Platform, Target, TargetArgs, Warnings, argv, finish, strip_ref_prefix};
 use super::show_helpers::{
     Approval, AzurePolicy, CheckDetail, CheckStatus, Checks, GitHubCheck, GitHubPrDetail,
-    ShowComments, ShowPr, ShowResult, azure_approval, azure_checks, azure_not_ready_reasons,
-    github_checks, github_not_ready_reasons,
+    RollupItem, ShowComments, ShowPr, ShowResult, azure_approval, azure_checks,
+    azure_not_ready_reasons, github_checks, github_not_ready_reasons,
 };
 use super::threads::NormalizedResult;
 use crate::core::azure::parse_remote;
@@ -123,22 +120,32 @@ fn show_github(target: &Target, warnings: &mut Warnings) -> Result<Option<ShowRe
     }))
 }
 
-/// `gh pr checks` exits 1 when checks fail and 8 when they are pending.
+/// Uses `gh pr view --json statusCheckRollup`: `gh pr checks --json` needs gh >= 2.48, and
+/// on older versions its "unknown flag" exit code looked like failing checks with no output.
 fn load_github_checks(repo: &GitHubRepo, number: u64) -> Result<Checks> {
-    let checks: Option<Vec<GitHubCheck>> = run_json_allow_exit_codes(
-        &argv(&[
-            "gh",
-            "pr",
-            "checks",
-            &number.to_string(),
-            "--repo",
-            &repo.slug(),
-            "--json",
-            "name,state,bucket,link,workflow",
-        ]),
-        &[0, 1, 8],
-    )?;
-    Ok(github_checks(checks.unwrap_or_default()))
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Rollup {
+        #[serde(default)]
+        status_check_rollup: Vec<RollupItem>,
+    }
+    let rollup: Rollup = run_json(argv(&[
+        "gh",
+        "pr",
+        "view",
+        &number.to_string(),
+        "--repo",
+        &repo.slug(),
+        "--json",
+        "statusCheckRollup",
+    ]))?;
+    Ok(github_checks(
+        rollup
+            .status_check_rollup
+            .into_iter()
+            .map(GitHubCheck::from)
+            .collect(),
+    ))
 }
 
 fn show_azure(target: &Target, warnings: &mut Warnings) -> Result<Option<ShowResult>> {

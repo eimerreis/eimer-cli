@@ -2,12 +2,12 @@
 
 use std::collections::HashMap;
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
 
 use super::shared::{Platform, Warnings, argv, timestamp};
 use super::threads::{NormalizedComment, NormalizedResult, NormalizedThread, ResultPr};
-use crate::core::process::run_json;
+use crate::core::process::{run_json, run_text};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitHubRepo {
@@ -158,13 +158,23 @@ pub fn load_comments(
     load_comments_for(&repo, &pr, branch)
 }
 
+/// Parses `gh api --paginate` output: zero or more JSON arrays, concatenated.
+fn parse_paginated<T: serde::de::DeserializeOwned>(raw: &str) -> Result<Vec<Vec<T>>> {
+    serde_json::Deserializer::from_str(raw)
+        .into_iter::<Vec<T>>()
+        .collect::<std::result::Result<_, _>>()
+        .context("Failed to parse paginated GitHub API response")
+}
+
 /// Loads and threads the review comments of an already-resolved PR.
 pub fn load_comments_for(
     repo: &GitHubRepo,
     pr: &GitHubPullRequest,
     branch: &str,
 ) -> Result<NormalizedResult> {
-    let pages: Vec<Vec<GitHubReviewComment>> = run_json(argv(&[
+    // `--paginate` prints one JSON array per page back to back. `--slurp` would merge them
+    // but needs gh >= 2.48, so parse the concatenated pages ourselves.
+    let raw = run_text(argv(&[
         "gh",
         "api",
         &format!(
@@ -173,8 +183,8 @@ pub fn load_comments_for(
             pr.number
         ),
         "--paginate",
-        "--slurp",
     ]))?;
+    let pages = parse_paginated::<GitHubReviewComment>(&raw)?;
     Ok(NormalizedResult {
         platform: Platform::Github,
         pr: ResultPr {
@@ -332,5 +342,18 @@ mod tests {
         assert_eq!(a.comments[2].author, "Unknown");
         assert_eq!(a.comments[2].parent_comment_id, Some(11));
         assert_eq!(a.updated_at.as_deref(), Some("2024-01-01T12:00:00Z"));
+    }
+}
+
+#[cfg(test)]
+mod paginate_tests {
+    use super::parse_paginated;
+
+    #[test]
+    fn parses_concatenated_pages() {
+        let pages = parse_paginated::<u32>("[1,2]\n[3]").unwrap();
+        assert_eq!(pages, vec![vec![1, 2], vec![3]]);
+        assert!(parse_paginated::<u32>("").unwrap().is_empty());
+        assert!(parse_paginated::<u32>("[1,").is_err());
     }
 }

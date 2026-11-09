@@ -4,35 +4,17 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use anyhow::{Result, bail};
-use dialoguer::{Input, theme::ColorfulTheme};
 
 use crate::core::prompt;
 
-/// Text prompt where empty input is allowed and falls back to `fallback`
+/// Text prompt where empty input falls back to `fallback`
 /// (matches Bunli's `prompt.text(..., { fallbackValue })`).
 pub fn text_with_fallback(
     message: &str,
     fallback: &str,
     validate: impl Fn(&str) -> Option<String>,
 ) -> Result<String> {
-    if !prompt::is_interactive() {
-        bail!("{message} is required (no interactive terminal to prompt)");
-    }
-    let theme = ColorfulTheme::default();
-    let mut input = Input::<String>::with_theme(&theme)
-        .with_prompt(message)
-        .allow_empty(true);
-    if !fallback.is_empty() {
-        input = input.default(fallback.to_string()).show_default(true);
-    }
-    let value = input
-        .validate_with(|value: &String| match validate(value) {
-            Some(err) => Err(err),
-            None => Ok(()),
-        })
-        .interact_text()?;
-    let value = value.trim();
-    Ok(if value.is_empty() { fallback } else { value }.to_string())
+    prompt::text_or(message, fallback, validate)
 }
 
 /// stdin and stdout are terminals (the TS `isInteractiveTerminal`).

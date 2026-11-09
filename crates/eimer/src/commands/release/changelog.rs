@@ -11,14 +11,14 @@ use super::changelog_format::{
     normalize_commit_sha,
 };
 use super::client::AzureDevOpsClient;
-use super::config::{load_config, mask_webhook_url, resolve_channels};
+use super::config::{load_config, mask_webhook_url, resolve_channels, save_config};
 use super::prod_stage::{ProdStageChecker, normalize_text};
 use super::runs::{Runs, load_remote_commit_range, strip_heads};
 use super::teams_review::review_teams_markdown;
 use super::teams_webhook::{TeamsPostInput, post_changelog_to_teams};
 use super::util::is_interactive_terminal;
 use crate::core::error::HintExt;
-use crate::core::process::copy_to_clipboard;
+use crate::core::process::{NoClipboard, copy_to_clipboard};
 use crate::core::{prompt, ui};
 
 #[derive(Args)]
@@ -41,8 +41,8 @@ pub struct ChangelogArgs {
     /// Area filter from predefined configs
     #[arg(long, short = 'a')]
     area: Option<String>,
-    /// Prod stage identifier/name override (useful for CI without config)
-    #[arg(long)]
+    /// Prod stage identifier/name override; remembered per pipeline once it finds a release
+    #[arg(long, visible_alias = "prod-stage")]
     prod_stage_name: Option<String>,
     /// Print only, do not copy changelog to clipboard
     #[arg(long)]
@@ -119,8 +119,6 @@ fn changelog(args: ChangelogArgs) -> Result<()> {
     let context = client.context.clone();
 
     let default_pipeline = config.default_pipeline();
-    let prod_stage_name =
-        trimmed(&args.prod_stage_name).unwrap_or_else(|| config.prod_stage_name());
     let branch = trimmed(&args.branch)
         .or_else(|| Some(config.default_branch()).filter(|b| !b.is_empty()))
         .unwrap_or_else(|| "refs/heads/master".into());
@@ -155,6 +153,13 @@ fn changelog(args: ChangelogArgs) -> Result<()> {
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| pipeline_name.clone());
 
+    // --prod-stage-name > remembered for this pipeline > global release.prodStageName > heuristics
+    let flag_stage = trimmed(&args.prod_stage_name);
+    let prod_stage_name = flag_stage
+        .clone()
+        .or_else(|| config.prod_stage_for(&display_pipeline))
+        .or_else(|| config.prod_stage_for(&pipeline_name))
+        .unwrap_or_else(|| config.prod_stage_name());
     let mut checker = ProdStageChecker::new(&client, &prod_stage_name);
     let runs = Runs {
         client: &client,
@@ -165,6 +170,11 @@ fn changelog(args: ChangelogArgs) -> Result<()> {
     let mut from_run = ui::spin_unless(json, "Resolving source release run", || {
         runs.resolve_from_run(args.from, &mut checker, &branch_display)
     })?;
+    // The explicit stage just identified a prod release run (not bypassed by --from),
+    // so it is valid for this pipeline: remember it. Never write config in CI.
+    if let (Some(stage), None, false) = (&flag_stage, args.from, ci_mode) {
+        remember_prod_stage(&display_pipeline, stage, json)?;
+    }
     let mut from_commit = from_run.source_version();
     if from_commit.is_empty() {
         bail!("Selected from run #{} has no sourceVersion.", from_run.id);
@@ -331,10 +341,15 @@ fn changelog(args: ChangelogArgs) -> Result<()> {
     println!("{markdown}");
 
     if !args.no_copy && interactive {
-        ui::with_spinner("Copying changelog to clipboard", || {
+        match ui::with_spinner("Copying changelog to clipboard", || {
             copy_to_clipboard(&markdown)
-        })?;
-        ui::print_success("Copied changelog to clipboard.");
+        }) {
+            Ok(()) => ui::print_success("Copied changelog to clipboard."),
+            Err(err) if err.downcast_ref::<NoClipboard>().is_some() => {
+                ui::print_warning(&err.to_string(), Some("Pass --no-copy to skip copying."));
+            }
+            Err(err) => return Err(err),
+        }
     } else if !args.no_copy {
         ui::print_info("Skipped clipboard copy in non-interactive mode.", None);
     }
@@ -348,6 +363,20 @@ fn changelog(args: ChangelogArgs) -> Result<()> {
         ui::print_success(&format!("Posted changelog to Teams{label} ({format})."));
     } else if skipped_post {
         ui::print_info("Skipped Teams webhook post.", None);
+    }
+    Ok(())
+}
+
+fn remember_prod_stage(pipeline: &str, stage: &str, json: bool) -> Result<()> {
+    let mut config = load_config()?;
+    if config.remember_prod_stage(pipeline, stage) {
+        save_config(&config)?;
+        if !json {
+            ui::print_info(
+                &format!("Remembered prod stage '{stage}' for '{pipeline}'."),
+                Some("Next time --prod-stage-name is not needed for this pipeline."),
+            );
+        }
     }
     Ok(())
 }

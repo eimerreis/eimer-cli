@@ -135,3 +135,41 @@ fn dedupes_reasons() {
     let r = ShowReason::new("x");
     assert_eq!(dedupe(vec![r.clone(), r.clone()]), vec![r]);
 }
+
+#[test]
+fn rollup_items_map_to_gh_buckets() {
+    let run = |status: &str, conclusion: Option<&str>| RollupItem {
+        name: Some("ci".into()),
+        status: Some(status.into()),
+        conclusion: conclusion.map(Into::into),
+        ..Default::default()
+    };
+    let ctx = |state: &str| RollupItem {
+        context: Some("ctx".into()),
+        state: Some(state.into()),
+        ..Default::default()
+    };
+
+    assert_eq!(rollup_bucket(&run("COMPLETED", Some("SUCCESS"))), "pass");
+    assert_eq!(
+        rollup_bucket(&run("COMPLETED", Some("SKIPPED"))),
+        "skipping"
+    );
+    assert_eq!(rollup_bucket(&run("COMPLETED", Some("FAILURE"))), "fail");
+    assert_eq!(
+        rollup_bucket(&run("COMPLETED", Some("CANCELLED"))),
+        "cancel"
+    );
+    assert_eq!(rollup_bucket(&run("IN_PROGRESS", None)), "pending");
+    assert_eq!(rollup_bucket(&run("QUEUED", None)), "pending");
+    assert_eq!(rollup_bucket(&ctx("SUCCESS")), "pass");
+    assert_eq!(rollup_bucket(&ctx("PENDING")), "pending");
+    assert_eq!(rollup_bucket(&ctx("ERROR")), "fail");
+
+    let checks = github_checks(vec![
+        run("COMPLETED", Some("SUCCESS")).into(),
+        run("COMPLETED", Some("SKIPPED")).into(),
+        run("IN_PROGRESS", None).into(),
+    ]);
+    assert_eq!(checks.status, CheckStatus::Pending);
+}

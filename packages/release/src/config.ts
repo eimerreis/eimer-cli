@@ -22,6 +22,8 @@ const configSchema = z
         defaultPipeline: requiredString.optional(),
         prodStageName: requiredString.optional(),
         defaultBranch: requiredString.optional(),
+        // Remembered prod stage per pipeline name (written by the eimer CLI).
+        prodStages: z.record(requiredString, requiredString).optional(),
       })
       .optional(),
     areas: z.record(requiredString, areaConfigSchema).optional(),
@@ -101,5 +103,17 @@ function withHomePath(path: string): string {
   return homeDir ? path.replace(homeDir, "~") : path;
 }
 
-export { getConfigPath, loadConfig, resolveChannels, saveConfig, withHomePath };
+/** Remembered prod stage for the first matching pipeline name (case-insensitive). */
+function prodStageForPipeline(config: ReleaseConfig, ...pipelineNames: Array<string | undefined>): string {
+  const stages = Object.entries(config.release?.prodStages || {});
+  for (const candidate of pipelineNames) {
+    const wanted = (candidate || "").trim().toLowerCase();
+    if (!wanted) continue;
+    const match = stages.find(([name]) => name.trim().toLowerCase() === wanted);
+    if (match) return match[1].trim();
+  }
+  return "";
+}
+
+export { getConfigPath, loadConfig, prodStageForPipeline, resolveChannels, saveConfig, withHomePath };
 export type { ReleaseAreaConfig, ReleaseConfig };
