@@ -2,7 +2,7 @@ import { defineCommand, option } from "@bunli/core";
 import { printError, printInfo, printSuccess, withSpinner } from "@scripts/ui";
 import { z } from "zod";
 import { getAreaConfig, listAreas, mergeAreaConfigs, type AreaConfig } from "../areas";
-import { loadConfig, resolveChannels } from "../config";
+import { loadConfig, prodStageForPipeline, resolveChannels } from "../config";
 import { copyToClipboard } from "./clipboard";
 import { buildMarkdownChangelog, countGroupedCommits, groupCommitsByType } from "./changelog-format";
 import { hasSuccessfulProdStage, type ProdStageCache } from "./prod-stage";
@@ -87,7 +87,6 @@ const changelogCommand = defineCommand({
       const prodStageCache: ProdStageCache = new Map();
       const defaultPipeline = (config.release?.defaultPipeline || "").trim();
       const configuredProdStageName = (config.release?.prodStageName || "").trim();
-      const resolvedProdStageName = (flags["prod-stage-name"] || configuredProdStageName).trim();
       const configuredDefaultBranch = (config.release?.defaultBranch || "").trim();
       const branch = (flags.branch || configuredDefaultBranch || "refs/heads/master").trim();
       const branchDisplayName = branch.replace(/^refs\/heads\//i, "");
@@ -121,6 +120,12 @@ const changelogCommand = defineCommand({
         silentFailure: true,
         silentSuccess: true,
       });
+      // --prod-stage-name > remembered for this pipeline > release.prodStageName > heuristics
+      const resolvedProdStageName = (
+        flags["prod-stage-name"] ||
+        prodStageForPipeline(config, pipeline.name, pipelineName) ||
+        configuredProdStageName
+      ).trim();
       let fromRun = await withSpinner(
         "Resolving source release run",
         () => resolveFromRun(pipeline.id, context.baseUrl, flags.from, prodStageCache, resolvedProdStageName, branch, branchDisplayName),

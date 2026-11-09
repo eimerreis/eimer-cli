@@ -62,6 +62,16 @@ Task commands can target a specific Azure DevOps project regardless of the curre
 
 Then pick one per directory with `task context use homag` (writes `.eimerrc`) or globally with `--global`. Resolution order: `--context` flag, `EIMER_CONTEXT`, nearest `.eimerrc`, `defaultContext`, otherwise the git remote.
 
+## Release changelogs
+
+`release changelog` finds the last production release by looking for a successful prod stage. If a pipeline's prod stage isn't detected automatically, pass it once:
+
+```sh
+release changelog --pipeline "tapio.B2C.UI" --prod-stage "deploy-tapiousers"
+```
+
+When that stage finds a release, it is remembered for the pipeline (`release.prodStages` in `~/.config/tapio-release/config.json`), so next time `release changelog --pipeline "tapio.B2C.UI"` is enough. Order: `--prod-stage-name` > remembered per pipeline > `release.prodStageName` > auto-detection. `release configure --show` lists remembered stages.
+
 ## Development
 
 See [AGENTS.md](AGENTS.md). The company package `@tapio/release` (`packages/release`, TypeScript) is still published separately for `bunx` usage in pipelines.

@@ -43,6 +43,9 @@ pub struct ReleaseSection {
     pub prod_stage_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_branch: Option<String>,
+    /// Remembered prod stage per pipeline name (set automatically by `changelog --prod-stage-name`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prod_stages: Option<BTreeMap<String, String>>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
@@ -64,6 +67,39 @@ impl ReleaseConfig {
     }
     pub fn default_branch(&self) -> String {
         self.release_field(|r| r.default_branch.as_deref())
+    }
+
+    /// Remembered prod stage for a pipeline (case-insensitive name match).
+    pub fn prod_stage_for(&self, pipeline: &str) -> Option<String> {
+        let wanted = pipeline.trim();
+        self.release
+            .as_ref()?
+            .prod_stages
+            .as_ref()?
+            .iter()
+            .find(|(name, _)| name.trim().eq_ignore_ascii_case(wanted))
+            .map(|(_, stage)| stage.trim().to_string())
+            .filter(|stage| !stage.is_empty())
+    }
+
+    /// Records `stage` for `pipeline`, replacing an entry that differs only in case.
+    /// Returns false when that stage was already remembered.
+    pub fn remember_prod_stage(&mut self, pipeline: &str, stage: &str) -> bool {
+        let (pipeline, stage) = (pipeline.trim(), stage.trim());
+        if pipeline.is_empty() || stage.is_empty() {
+            return false;
+        }
+        if self.prod_stage_for(pipeline).as_deref() == Some(stage) {
+            return false;
+        }
+        let stages = self
+            .release
+            .get_or_insert_with(ReleaseSection::default)
+            .prod_stages
+            .get_or_insert_with(BTreeMap::new);
+        stages.retain(|name, _| !name.trim().eq_ignore_ascii_case(pipeline));
+        stages.insert(pipeline.to_string(), stage.to_string());
+        true
     }
     fn release_field(&self, f: impl Fn(&ReleaseSection) -> Option<&str>) -> String {
         self.release
@@ -143,6 +179,13 @@ fn normalize(config: &mut ReleaseConfig) -> Result<()> {
         optional("release.defaultPipeline", &mut release.default_pipeline)?;
         optional("release.prodStageName", &mut release.prod_stage_name)?;
         optional("release.defaultBranch", &mut release.default_branch)?;
+        if let Some(stages) = release.prod_stages.take() {
+            let mut stages = map_keys("release.prodStages", stages)?;
+            for (pipeline, stage) in &mut stages {
+                required(&format!("release.prodStages.{pipeline}"), stage)?;
+            }
+            release.prod_stages = Some(stages);
+        }
     }
     if let Some(areas) = config.areas.take() {
         let mut areas = map_keys("areas", areas)?;
@@ -223,6 +266,47 @@ mod tests {
     use super::super::areas::merge_area_configs;
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn remembers_prod_stage_per_pipeline() {
+        let mut config = parse_config(json!({
+            "release": {"prodStageName": "deploy_prod", "prodStages": {"tapio.B2C.UI": "deploy-tapiousers"}}
+        }))
+        .unwrap();
+        // case-insensitive lookup, global override untouched
+        assert_eq!(
+            config.prod_stage_for("TAPIO.b2c.ui").as_deref(),
+            Some("deploy-tapiousers")
+        );
+        assert_eq!(config.prod_stage_for("other"), None);
+        assert_eq!(config.prod_stage_name(), "deploy_prod");
+
+        // same stage again: nothing to save
+        assert!(!config.remember_prod_stage("tapio.b2c.ui", "deploy-tapiousers"));
+        // new stage replaces the entry that differs only in case
+        assert!(config.remember_prod_stage("tapio.b2c.ui", "deploy_users"));
+        let stages = config
+            .release
+            .as_ref()
+            .unwrap()
+            .prod_stages
+            .as_ref()
+            .unwrap();
+        assert_eq!(stages.len(), 1);
+        assert_eq!(stages["tapio.b2c.ui"], "deploy_users");
+        // new pipeline is added
+        assert!(config.remember_prod_stage("App", "release"));
+        assert!(!config.remember_prod_stage(" ", "x"));
+
+        let saved = serde_json::to_value(&config).unwrap();
+        assert_eq!(saved["release"]["prodStages"]["App"], "release");
+        assert_eq!(saved["release"]["prodStageName"], "deploy_prod");
+    }
+
+    #[test]
+    fn rejects_empty_remembered_stage() {
+        assert!(parse_config(json!({"release": {"prodStages": {"app": " "}}})).is_err());
+    }
 
     #[test]
     fn parses_and_preserves_unknown_keys() {

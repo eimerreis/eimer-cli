@@ -98,6 +98,8 @@ fn prompt_for_config(current: &ReleaseConfig) -> Result<ReleaseConfig> {
         default_pipeline: some(default_pipeline),
         prod_stage_name: some(prod_stage_name),
         default_branch: some(default_branch),
+        // Not asked in the wizard; keep the remembered per-pipeline stages.
+        prod_stages: current.release.as_ref().and_then(|r| r.prod_stages.clone()),
         extra: current
             .release
             .as_ref()
@@ -106,7 +108,8 @@ fn prompt_for_config(current: &ReleaseConfig) -> Result<ReleaseConfig> {
     };
     let has_release = release.default_pipeline.is_some()
         || release.prod_stage_name.is_some()
-        || release.default_branch.is_some();
+        || release.default_branch.is_some()
+        || release.prod_stages.is_some();
     let teams = (primary.is_some() || !named.is_empty()).then(|| TeamsSection {
         webhook_url: primary,
         channels: (!named.is_empty()).then_some(named),
@@ -270,6 +273,17 @@ fn print_config_summary(config: &ReleaseConfig, display_path: &str) {
         "Prod stage override: {}",
         or(config.prod_stage_name(), "(auto-detect)")
     );
+    let remembered = config
+        .release
+        .as_ref()
+        .and_then(|r| r.prod_stages.as_ref())
+        .filter(|s| !s.is_empty());
+    if let Some(stages) = remembered {
+        println!("Prod stages per pipeline:");
+        for (pipeline, stage) in stages {
+            println!("- {pipeline}: {stage}");
+        }
+    }
     if channels.is_empty() {
         println!("Teams channels: (none)");
         return;
