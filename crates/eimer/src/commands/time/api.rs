@@ -1,4 +1,4 @@
-//! codeunity time REST client (mirrors the Raycast extension's `timeClient.ts`).
+//! codeunity time REST client. Contract: https://backend.timeunity.de/openapi/v1.json
 
 use anyhow::{Context, Result, anyhow, bail};
 use reqwest::Url;
@@ -122,13 +122,10 @@ impl TimeClient {
             .time_records)
     }
 
-    /// Creates a record and returns its id. The response shape is undocumented, so the
-    /// id is read from it when present, else looked up by date, description and duration.
+    /// Creates a record and returns its id. The endpoint answers 204 without a body,
+    /// so the record is looked up by date, description and duration (newest wins).
     pub fn create_record(&self, input: &TimeRecordInput) -> Result<u64> {
-        let text = self.post("timerecords.create-multiple", &[input])?;
-        if let Some(id) = id_from_response(&text) {
-            return Ok(id);
-        }
+        self.post("timerecords.create-multiple", &[input])?;
         self.time_records(input.project_id, &input.date, &input.date)?
             .into_iter()
             .filter(|r| r.description == input.description && r.duration == input.duration)
@@ -139,14 +136,12 @@ impl TimeClient {
             })
     }
 
+    /// Callers must not update invoiced records; `isInvoiced` is required and sent as false.
     pub fn update_record(&self, id: u64, input: &TimeRecordInput) -> Result<()> {
-        #[derive(Serialize)]
-        struct Update<'a> {
-            id: u64,
-            #[serde(flatten)]
-            input: &'a TimeRecordInput,
-        }
-        self.post("timerecords.update-multiple", &[Update { id, input }])?;
+        self.post(
+            "timerecords.update-multiple",
+            &[UpdateRecord::new(id, input)],
+        )?;
         Ok(())
     }
 
@@ -163,32 +158,28 @@ impl TimeClient {
     }
 }
 
-fn id_from_response(text: &str) -> Option<u64> {
-    let data: serde_json::Value = serde_json::from_str(text).ok()?;
-    let candidate = data
-        .get(0)
-        .or_else(|| data.get("timeRecords").and_then(|v| v.get(0)))
-        .or_else(|| data.get("ids").and_then(|v| v.get(0)))
-        .unwrap_or(&data);
-    candidate
-        .as_u64()
-        .or_else(|| candidate.get("id").and_then(|id| id.as_u64()))
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateRecord<'a> {
+    id: u64,
+    #[serde(flatten)]
+    input: &'a TimeRecordInput,
+    is_invoiced: bool,
+}
+
+impl<'a> UpdateRecord<'a> {
+    fn new(id: u64, input: &'a TimeRecordInput) -> Self {
+        Self {
+            id,
+            input,
+            is_invoiced: false,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn reads_id_from_known_response_shapes() {
-        assert_eq!(id_from_response("[12]"), Some(12));
-        assert_eq!(id_from_response(r#"[{"id":12}]"#), Some(12));
-        assert_eq!(id_from_response(r#"{"timeRecords":[{"id":12}]}"#), Some(12));
-        assert_eq!(id_from_response(r#"{"ids":[12]}"#), Some(12));
-        assert_eq!(id_from_response(r#"{"id":12}"#), Some(12));
-        assert_eq!(id_from_response(""), None);
-        assert_eq!(id_from_response(r#"{"ok":true}"#), None);
-    }
 
     #[test]
     fn update_body_is_flat() {
@@ -199,19 +190,9 @@ mod tests {
             duration: 150,
             on_site: false,
         };
-        #[derive(Serialize)]
-        struct Update<'a> {
-            id: u64,
-            #[serde(flatten)]
-            input: &'a TimeRecordInput,
-        }
         assert_eq!(
-            serde_json::to_string(&[Update {
-                id: 7,
-                input: &input
-            }])
-            .unwrap(),
-            r#"[{"id":7,"projectId":1,"date":"2026-11-06","description":"d","duration":150,"onSite":false}]"#
+            serde_json::to_string(&[UpdateRecord::new(7, &input)]).unwrap(),
+            r#"[{"id":7,"projectId":1,"date":"2026-11-06","description":"d","duration":150,"onSite":false,"isInvoiced":false}]"#
         );
     }
 }
