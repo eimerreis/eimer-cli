@@ -1,7 +1,8 @@
 name: Release eimer
 
 # Builds the Rust `eimer` binary for all supported platforms.
-# - Push a tag `eimer/v<version>` (matching crates/eimer/Cargo.toml) to publish a GitHub Release.
+# - The Release workflow pushes `eimer/v<version>` (matching crates/eimer/Cargo.toml) when an eimer
+#   changeset reaches main; that tag publishes a GitHub Release with the CHANGELOG entry as notes.
 # - Run manually (workflow_dispatch) to build the artifacts without publishing.
 # - PRs that change dependencies or this workflow build (but never publish) to catch cross-compile breakage.
 # `release/v*` tags belong to the @tapio/release npm package and are not touched here.
@@ -130,10 +131,27 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          sparse-checkout: crates/eimer/CHANGELOG.md
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: dist
           merge-multiple: true
+
+      - name: Extract release notes
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # The section between "## <version>" and the next "## " heading.
+          if [ -f crates/eimer/CHANGELOG.md ]; then
+            awk -v v="## ${VERSION}" '$0 == v {found=1; next} found && /^## / {exit} found {print}' \
+              crates/eimer/CHANGELOG.md > release-notes.md
+          fi
+          touch release-notes.md
 
       - name: Create release
         env:
@@ -142,11 +160,16 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
+          if [ -s release-notes.md ]; then
+            notes=(--notes-file "$PWD/release-notes.md")
+          else
+            notes=(--generate-notes)
+          fi
           cd dist
           cat *.sha256 > SHA256SUMS
           # --latest=false: the "Latest" badge stays with @tapio/release; install/upgrade filter by tag prefix.
           gh release create "${TAG}" * \
             --repo "${GITHUB_REPOSITORY}" \
             --title "eimer v${VERSION}" \
-            --generate-notes \
+            "${notes[@]}" \
             --latest=false

@@ -99,4 +99,4 @@ When that stage finds a release, it is remembered for the pipeline (`release.pro
 
 ## Development
 
-See [AGENTS.md](AGENTS.md). The company package `@tapio/release` (`packages/release`, TypeScript) is still published separately for `bunx` usage in pipelines.
+See [AGENTS.md](AGENTS.md). Every pull request needs a changeset (`bunx changeset`, or `bunx changeset --empty` when nothing ships); releases are cut automatically from `main`. The company package `@tapio/release` (`packages/release`, TypeScript) is still published separately for `bunx` usage in pipelines.

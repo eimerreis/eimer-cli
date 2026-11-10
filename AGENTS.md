@@ -24,15 +24,22 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt
 ```
 
-Releases: bump `version` in `crates/eimer/Cargo.toml`, merge, then push tag `eimer/v<version>`. CI builds all platforms and publishes the GitHub Release.
+## Releases and changesets
+
+Every pull request needs a changeset (the `Changeset` check is required on `main`). Pick the release unit and bump with `bunx changeset`; use `bunx changeset --empty` when nothing ships (docs, CI, refactors). Titles starting with `chore(deps)` or `chore(deps-dev)` are exempt.
+
+| Release unit | Changesets package | Tag |
+| --- | --- | --- |
+| Rust CLI `eimer` | `eimer` (`crates/eimer/package.json`) | `eimer/v<version>` |
+| `@tapio/release` | `@scripts/release` | `release/v<version>` |
+
+On every push to `main` the `Release` workflow versions pending changesets, syncs the eimer version into `Cargo.toml`/`Cargo.lock`, and commits the metadata as the `eimerreis-release` App (it rejects anything but metadata). The `eimer/v*` tag then builds all platforms and publishes the GitHub Release with the CHANGELOG entry; `release/v*` publishes `@tapio/release`. Never bump versions by hand. See [eimerreis/devops](https://github.com/eimerreis/devops) ADR-0009 and ADR-0018.
 
 ## TypeScript (`@tapio/release`)
 
 ```bash
 cd packages/release && bun run typecheck && bun test
 ```
-
-Changes under `packages/release` require a changeset (`bunx changeset`).
 
 ## Coding Conventions (Rust)
 - **Edition 2024**, stable toolchain
