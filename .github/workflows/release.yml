@@ -37,7 +37,7 @@ jobs:
           repositories: ${{ github.event.repository.name }}
           permission-contents: write
 
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ steps.app.outputs.token }}
           ref: ${{ github.ref_name }}
@@ -91,7 +91,7 @@ jobs:
       AZDEVOPS_PROJECT: ${{ secrets.AZDEVOPS_PROJECT }}
       AZDEVOPS_PAT: ${{ secrets.AZDEVOPS_PAT }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: release/v${{ needs.prepare.outputs.release_version }}
 
