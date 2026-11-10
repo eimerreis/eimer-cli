@@ -1,5 +1,8 @@
 name: Release
-
+# On every push to main: version pending changesets with the Changesets CLI, commit the release
+# metadata to main as the release App, and tag each release unit (eimerreis/devops ADR-0009).
+# - eimer: the `eimer/v<version>` tag starts "Release eimer", which builds and publishes binaries.
+# - @scripts/release: published to Azure Artifacts as @tapio/release by the publish-release job.
 on:
   push:
     branches:
@@ -7,14 +10,76 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
-  publish:
-    if: github.actor != 'github-actions[bot]'
-    name: Version and publish @tapio/release
+  prepare:
+    name: Version release units
+    # The release commit itself must not start another release.
+    if: github.actor != 'eimerreis-release[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    outputs:
+      released: ${{ steps.prepare.outputs.released }}
+      eimer_version: ${{ steps.prepare.outputs.eimer_version }}
+      release_version: ${{ steps.prepare.outputs.release_version }}
+    steps:
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          token: ${{ steps.app.outputs.token }}
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Version pending changesets
+        id: prepare
+        run: bun scripts/release.ts prepare
+
+      - name: Commit, tag and push
+        if: steps.prepare.outputs.released == 'true'
+        env:
+          EIMER_VERSION: ${{ steps.prepare.outputs.eimer_version }}
+          RELEASE_VERSION: ${{ steps.prepare.outputs.release_version }}
+        run: |
+          set -euo pipefail
+          git config user.name "eimerreis-release[bot]"
+          git config user.email "353283402+eimerreis-release[bot]@users.noreply.github.com"
+
+          units=()
+          tags=()
+          if [ -n "$EIMER_VERSION" ]; then units+=("eimer ${EIMER_VERSION}"); tags+=("eimer/v${EIMER_VERSION}"); fi
+          if [ -n "$RELEASE_VERSION" ]; then units+=("@tapio/release ${RELEASE_VERSION}"); tags+=("release/v${RELEASE_VERSION}"); fi
+          summary="$(printf '%s, ' "${units[@]}")"
+          summary="${summary%, }"
+
+          git add -A
+          git commit -m "chore(release): ${summary}"
+          for tag in "${tags[@]}"; do git tag "$tag"; done
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          for tag in "${tags[@]}"; do git push origin "$tag"; done
+
+  publish-release:
+    name: Publish @tapio/release
+    needs: prepare
+    if: needs.prepare.outputs.release_version != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: tapioone-azdevops
     permissions:
       contents: write
@@ -25,96 +90,23 @@ jobs:
       AZDEVOPS_PACKAGEFEED: ${{ secrets.AZDEVOPS_PACKAGEFEED }}
       AZDEVOPS_PROJECT: ${{ secrets.AZDEVOPS_PROJECT }}
       AZDEVOPS_PAT: ${{ secrets.AZDEVOPS_PAT }}
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          fetch-depth: 0
-          ref: ${{ github.ref_name }}
+          ref: release/v${{ needs.prepare.outputs.release_version }}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile --ignore-scripts
-
-      - name: Detect pending changesets
-        id: changesets
-        run: |
-          set -euo pipefail
-
-          shopt -s nullglob
-          files=(.changeset/*.md)
-          pending=()
-          for file in "${files[@]}"; do
-            if [ "$(basename "$file")" != "README.md" ]; then
-              pending+=("$file")
-            fi
-          done
-
-          if [ ${#pending[@]} -eq 0 ]; then
-            echo "has_changesets=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          printf 'Pending changesets:\n%s\n' "${pending[@]}"
-          echo "has_changesets=true" >> "$GITHUB_OUTPUT"
-
-      - name: Read current release version
-        if: steps.changesets.outputs.has_changesets == 'true'
-        id: current
-        run: |
-          set -euo pipefail
-          VERSION="$(bun --eval 'const pkg = JSON.parse(await Bun.file("packages/release/package.json").text()); process.stdout.write(pkg.version);')"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      - name: Configure git author
-        if: steps.changesets.outputs.has_changesets == 'true'
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Version release package
-        if: steps.changesets.outputs.has_changesets == 'true'
-        run: bunx changeset version
-
-      - name: Resolve release version
-        if: steps.changesets.outputs.has_changesets == 'true'
-        id: version
-        run: |
-          set -euo pipefail
-
-          PREVIOUS_VERSION="${{ steps.current.outputs.version }}"
-          VERSION="$(bun --eval 'const pkg = JSON.parse(await Bun.file("packages/release/package.json").text()); process.stdout.write(pkg.version);')"
-
-          if [ "$VERSION" = "$PREVIOUS_VERSION" ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No @scripts/release version change detected."
-            exit 0
-          fi
-
-          TAG="release/v${VERSION}"
-
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-
-      - name: Sync Bun lockfile with release version
-        if: steps.version.outputs.changed == 'true'
-        run: bun install --lockfile-only --ignore-scripts
+      - run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Build publish bundle
-        if: steps.version.outputs.changed == 'true'
         run: bun build packages/release/src/index.ts --outdir packages/release/dist --target bun
 
       - name: Prepare publish package
-        if: steps.version.outputs.changed == 'true'
         run: |
           set -euo pipefail
 
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ needs.prepare.outputs.release_version }}"
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
             echo "Invalid release version: $VERSION"
             exit 1
@@ -170,7 +162,6 @@ jobs:
           '
 
       - name: Configure npm authentication
-        if: steps.version.outputs.changed == 'true'
         run: |
           set -euo pipefail
 
@@ -203,10 +194,9 @@ jobs:
           EOF
 
       - name: Extract release notes
-        if: steps.version.outputs.changed == 'true'
         run: |
           set -euo pipefail
-          VERSION="${{ steps.version.outputs.version }}" bun --eval '
+          VERSION="${{ needs.prepare.outputs.release_version }}" bun --eval '
             const version = process.env.VERSION;
             if (!version) {
               throw new Error("VERSION must be set.");
@@ -220,48 +210,17 @@ jobs:
             await Bun.write("release-notes.md", `${match[1].trim()}\n`);
           '
 
-      - name: Commit version updates
-        if: steps.version.outputs.changed == 'true'
-        run: |
-          set -euo pipefail
-
-          git add -A .changeset package.json bun.lock packages
-
-          if git diff --cached --quiet; then
-            echo "No release changes to commit."
-            exit 1
-          fi
-
-          git commit -m "chore(release): version @scripts/release to ${{ steps.version.outputs.version }}"
-          git tag "${{ steps.version.outputs.tag }}"
-
-      - name: Verify push permissions
-        if: steps.version.outputs.changed == 'true'
-        run: |
-          set -euo pipefail
-          git push --dry-run origin HEAD:${{ github.ref_name }}
-          git push --dry-run origin "${{ steps.version.outputs.tag }}"
-
       - name: Publish package
-        if: steps.version.outputs.changed == 'true'
         run: |
           set -euo pipefail
           cd publish
           npm publish --registry "$NPM_FEED_REGISTRY"
 
-      - name: Push release commit and tag
-        if: steps.version.outputs.changed == 'true'
-        run: |
-          set -euo pipefail
-          git push origin HEAD:${{ github.ref_name }}
-          git push origin "${{ steps.version.outputs.tag }}"
-
       - name: Create GitHub release
-        if: steps.version.outputs.changed == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --title "@tapio/release v${{ steps.version.outputs.version }}" \
+          gh release create "release/v${{ needs.prepare.outputs.release_version }}" \
+            --title "@tapio/release v${{ needs.prepare.outputs.release_version }}" \
             --notes-file release-notes.md

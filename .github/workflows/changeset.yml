@@ -1,0 +1,31 @@
+name: Changeset
+# Every pull request states its release intent with a changeset (eimerreis/devops ADR-0018).
+# An empty changeset (`bunx changeset --empty`) says nothing ships. Titles chore(deps) and
+# chore(deps-dev) are exempt. Runs on title edits too, because the title decides the exemption.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changeset:
+    name: Changeset
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: bun test scripts/
+      - name: Require a changeset
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_REF: origin/${{ github.base_ref }}
+        run: bun scripts/release.ts check-pr "$BASE_REF"
