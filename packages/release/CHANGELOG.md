@@ -1,5 +1,11 @@
 # @scripts/release
 
+## 0.6.0
+
+### Minor Changes
+
+- 70a48c3: Use the per-pipeline prod stage remembered in `release.prodStages` (written by the eimer CLI) when `--prod-stage-name` is not passed, and accept the new key in the config schema.
+
 ## 0.5.2
 
 ### Patch Changes

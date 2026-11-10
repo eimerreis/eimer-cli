@@ -1,6 +1,6 @@
 {
   "name": "eimer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Release unit for the Rust eimer CLI. Changesets versions it; the release workflow syncs the version into Cargo.toml."
 }
