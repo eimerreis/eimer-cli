@@ -1,0 +1,175 @@
+name: Release eimer
+
+# Builds the Rust `eimer` binary for all supported platforms.
+# - The Release workflow pushes `eimer/v<version>` (matching crates/eimer/Cargo.toml) when an eimer
+#   changeset reaches main; that tag publishes a GitHub Release with the CHANGELOG entry as notes.
+# - Run manually (workflow_dispatch) to build the artifacts without publishing.
+# - PRs that change dependencies or this workflow build (but never publish) to catch cross-compile breakage.
+# `release/v*` tags belong to the @tapio/release npm package and are not touched here.
+
+on:
+  push:
+    tags:
+      - "eimer/v*"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/release-eimer.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/eimer/Cargo.toml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    name: Check version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - id: version
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/eimer/Cargo.toml | head -1)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          if [[ "${GITHUB_REF}" == refs/tags/eimer/v* ]]; then
+            tag_version="${GITHUB_REF#refs/tags/eimer/v}"
+            if [ "${tag_version}" != "${version}" ]; then
+              echo "Tag version ${tag_version} does not match crates/eimer/Cargo.toml version ${version}" >&2
+              exit 1
+            fi
+          fi
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            zig: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            zig: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            ext: .exe
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install zig
+        if: matrix.zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+
+      - name: Install cargo-zigbuild
+        if: matrix.zig
+        run: cargo install cargo-zigbuild --locked --version 0.24.1
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.zig }}" = "true" ]; then
+            cargo zigbuild --release --locked --target ${{ matrix.target }}
+          else
+            cargo build --release --locked --target ${{ matrix.target }}
+          fi
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          asset="eimer-${{ matrix.target }}${{ matrix.ext }}"
+          cp "target/${{ matrix.target }}/release/eimer${{ matrix.ext }}" "dist/${asset}"
+          cd dist
+          if command -v sha256sum >/dev/null; then
+            sha256sum "${asset}" > "${asset}.sha256"
+          else
+            shasum -a 256 "${asset}" > "${asset}.sha256"
+          fi
+          cat "${asset}.sha256"
+
+      - name: Smoke test
+        if: "!contains(matrix.target, 'aarch64-unknown-linux') && !(matrix.target == 'x86_64-apple-darwin')"
+        shell: bash
+        run: ./dist/eimer-${{ matrix.target }}${{ matrix.ext }} --version
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: eimer-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: [version, build]
+    if: startsWith(github.ref, 'refs/tags/eimer/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          sparse-checkout: crates/eimer/CHANGELOG.md
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Extract release notes
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # The section between "## <version>" and the next "## " heading.
+          if [ -f crates/eimer/CHANGELOG.md ]; then
+            awk -v v="## ${VERSION}" '$0 == v {found=1; next} found && /^## / {exit} found {print}' \
+              crates/eimer/CHANGELOG.md > release-notes.md
+          fi
+          touch release-notes.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -s release-notes.md ]; then
+            notes=(--notes-file "$PWD/release-notes.md")
+          else
+            notes=(--generate-notes)
+          fi
+          cd dist
+          cat *.sha256 > SHA256SUMS
+          # --latest=false: the "Latest" badge stays with @tapio/release; install/upgrade filter by tag prefix.
+          gh release create "${TAG}" * \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "eimer v${VERSION}" \
+            "${notes[@]}" \
+            --latest=false
