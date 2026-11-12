@@ -258,9 +258,23 @@ fn accumulate(entry: &Entry, focus: i64) -> (f64, i64) {
     (hours, minutes)
 }
 
-/// Records the focus since the last window into the branch's entry (creating it on
-/// the first run). Returns a message when the entry changed and was committed.
-pub fn record(commit: bool) -> Result<Option<String>> {
+/// What the hook would do right now.
+pub struct Plan {
+    root: PathBuf,
+    identity: RepoIdentity,
+    now: i64,
+    pub since: i64,
+    /// New focus (seconds) since the last recorded window.
+    pub focus: i64,
+    /// The branch's committed entry, if any, as it is now.
+    pub existing: Option<(PathBuf, Entry)>,
+    /// The entry after recording.
+    pub entry: Entry,
+    /// Whether recording would write (and the hook stop the push).
+    pub changes: bool,
+}
+
+pub fn plan() -> Result<Plan> {
     let config = repo::load_config()?;
     if config.projects.len() > 1 {
         return Err(anyhow::anyhow!("This repo bills to several time projects"))
@@ -274,21 +288,20 @@ pub fn record(commit: bool) -> Result<Option<String>> {
     let focus = activity::focus_seconds(&identity, since, now, DEFAULT_GAP_SECS)?;
     let subjects = commit_subjects(&base);
 
-    let (path, entry, created) = match branch_entry(&root, &base) {
+    let (existing, entry, changes) = match branch_entry(&root, &base) {
         Some(path) => {
-            let mut entry = pending::read(&path)?;
-            let (hours, minutes) = accumulate(&entry, focus);
+            let current = pending::read(&path)?;
+            let (hours, minutes) = accumulate(&current, focus);
             // Only a change in hours is worth stopping a push. Smaller focus stays
             // unrecorded (the window is not advanced) until it adds up.
-            if hours == entry.hours {
-                return Ok(None);
-            }
-            let description = merge_subjects(&entry.description, &subjects);
-            entry.hours = hours;
-            entry.focus_minutes = Some(minutes);
-            entry.description = description;
-            pending::overwrite(&path, &entry)?;
-            (path, entry, false)
+            let changes = hours != current.hours;
+            let entry = Entry {
+                hours,
+                focus_minutes: Some(minutes),
+                description: merge_subjects(&current.description, &subjects),
+                ..current.clone()
+            };
+            (Some((path, current)), entry, changes)
         }
         None => {
             let entry = Entry {
@@ -298,18 +311,47 @@ pub fn record(commit: bool) -> Result<Option<String>> {
                 focus_minutes: Some(focus / 60),
                 description: merge_subjects("", &subjects),
             };
-            let path = pending::write(&root, &entry)?;
-            (path, entry, true)
+            (None, entry, true)
         }
     };
-    activity::set_covered_until(&identity, now)?;
+    Ok(Plan {
+        root,
+        identity,
+        now,
+        since,
+        focus,
+        existing,
+        entry,
+        changes,
+    })
+}
 
-    let relative = path.strip_prefix(&root).unwrap_or(&path).to_path_buf();
-    let verb = if created { "Recorded" } else { "Updated" };
+/// Records the focus since the last window into the branch's entry (creating it on
+/// the first run). Returns a message when the entry changed (and was committed).
+pub fn record(commit: bool) -> Result<Option<String>> {
+    let plan = plan()?;
+    if !plan.changes {
+        return Ok(None);
+    }
+    let path = match &plan.existing {
+        Some((path, _)) => {
+            pending::overwrite(path, &plan.entry)?;
+            path.clone()
+        }
+        None => pending::write(&plan.root, &plan.entry)?,
+    };
+    activity::set_covered_until(&plan.identity, plan.now)?;
+
+    let relative = path.strip_prefix(&plan.root).unwrap_or(&path).to_path_buf();
+    let verb = if plan.existing.is_some() {
+        "Updated"
+    } else {
+        "Recorded"
+    };
     let message = format!(
         "{verb} {} ({}m focus) in {}",
-        duration::format(entry.hours),
-        entry.focus_minutes.unwrap_or_default(),
+        duration::format(plan.entry.hours),
+        plan.entry.focus_minutes.unwrap_or_default(),
         relative.display()
     );
     if commit {
@@ -321,13 +363,76 @@ pub fn record(commit: bool) -> Result<Option<String>> {
             "--no-verify",
             "--only",
             "-m",
-            &format!("chore(time): record {}", duration::format(entry.hours)),
+            &format!("chore(time): record {}", duration::format(plan.entry.hours)),
             "--",
             &file,
         ])
         .context("Failed to commit the time entry")?;
     }
     Ok(Some(message))
+}
+
+#[derive(serde::Serialize)]
+struct PreviewJson<'a> {
+    file: Option<String>,
+    current_hours: Option<f64>,
+    since: String,
+    new_focus_minutes: i64,
+    hours: f64,
+    focus_minutes: Option<i64>,
+    would_record: bool,
+    description: &'a str,
+}
+
+/// Shows what the next push would record, without writing anything.
+pub fn preview(json: bool) -> Result<()> {
+    let plan = plan()?;
+    let relative = |p: &Path| {
+        p.strip_prefix(&plan.root)
+            .unwrap_or(p)
+            .display()
+            .to_string()
+    };
+    let since = chrono::DateTime::from_timestamp(plan.since, 0)
+        .expect("valid timestamp")
+        .with_timezone(&chrono::Local)
+        .format("%Y-%m-%d %H:%M")
+        .to_string();
+    if json {
+        return ui::print_json(&PreviewJson {
+            file: plan.existing.as_ref().map(|(p, _)| relative(p)),
+            current_hours: plan.existing.as_ref().map(|(_, e)| e.hours),
+            since,
+            new_focus_minutes: plan.focus / 60,
+            hours: plan.entry.hours,
+            focus_minutes: plan.entry.focus_minutes,
+            would_record: plan.changes,
+            description: &plan.entry.description,
+        });
+    }
+    let new_focus = format!("{}m new focus since {since}", plan.focus / 60);
+    let headline = match &plan.existing {
+        None => format!(
+            "Next push records {} ({new_focus}) in a new .time/ entry",
+            duration::format(plan.entry.hours)
+        ),
+        Some((path, current)) if plan.changes => format!(
+            "Next push updates {}: {} → {} ({new_focus})",
+            relative(path),
+            duration::format(current.hours),
+            duration::format(plan.entry.hours)
+        ),
+        Some((path, current)) => format!(
+            "Next push keeps {} at {} ({new_focus}; recorded once it adds up to the next quarter hour)",
+            relative(path),
+            duration::format(current.hours)
+        ),
+    };
+    ui::print_info(&headline, Some("Preview only; nothing written or booked."));
+    if !plan.entry.description.is_empty() {
+        println!("{}", plan.entry.description);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

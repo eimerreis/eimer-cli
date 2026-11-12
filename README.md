@@ -59,6 +59,7 @@ eimer time init <projectId>       # writes .time.json in the repo (commit it), i
 eimer time hook install           # pre-push hook for other clones (shared by their worktrees)
 eimer time suggest                # focus time from your prompts since the last `add`
 eimer time add 1.5h -d "what"     # writes .time/<date>-<id>.md (commit it with the PR)
+eimer time preview [--json]       # what the next push would record for this branch (writes nothing)
 eimer time add --auto [--commit]  # what the hook does: record focus into this branch's entry
 eimer time none "internal tooling" # PR body: Time: none (internal tooling)
 eimer time status                 # exit 1 when the PR has neither
