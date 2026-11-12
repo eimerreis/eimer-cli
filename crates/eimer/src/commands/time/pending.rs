@@ -7,6 +7,7 @@
 //! hours: 1.5
 //! date: 2026-11-12
 //! project: web        # only when .time.json lists several projects
+//! focus_minutes: 85    # only on entries written by the pre-push hook
 //! ---
 //! What was done (optional)
 //! ```
@@ -27,6 +28,9 @@ pub struct Entry {
     pub date: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
+    /// Measured focus the hook accumulated; `hours` is this rounded up.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focus_minutes: Option<i64>,
     pub description: String,
 }
 
@@ -38,6 +42,9 @@ pub fn format(entry: &Entry) -> String {
     );
     if let Some(project) = &entry.project {
         out.push_str(&format!("project: {project}\n"));
+    }
+    if let Some(minutes) = entry.focus_minutes {
+        out.push_str(&format!("focus_minutes: {minutes}\n"));
     }
     out.push_str("---\n");
     if !entry.description.trim().is_empty() {
@@ -55,7 +62,7 @@ pub fn parse(raw: &str) -> Result<Entry> {
     let (front, body) = rest
         .split_once("\n---")
         .ok_or_else(|| anyhow!("unterminated front matter"))?;
-    let (mut hours, mut date, mut project) = (None, None, None);
+    let (mut hours, mut date, mut project, mut focus_minutes) = (None, None, None, None);
     for line in front.lines().map(str::trim).filter(|l| !l.is_empty()) {
         let (key, value) = line
             .split_once(':')
@@ -69,6 +76,13 @@ pub fn parse(raw: &str) -> Result<Entry> {
                 date = Some(value.to_string());
             }
             "project" => project = Some(value.to_string()).filter(|p| !p.is_empty()),
+            "focus_minutes" => {
+                focus_minutes = Some(
+                    value
+                        .parse()
+                        .map_err(|_| anyhow!("invalid focus_minutes \"{value}\""))?,
+                )
+            }
             other => bail!("unknown key \"{other}\""),
         }
     }
@@ -76,6 +90,7 @@ pub fn parse(raw: &str) -> Result<Entry> {
         hours: hours.ok_or_else(|| anyhow!("missing hours"))?,
         date: date.ok_or_else(|| anyhow!("missing date"))?,
         project,
+        focus_minutes,
         description: body.trim().to_string(),
     })
 }
@@ -123,9 +138,19 @@ pub fn write(root: &Path, entry: &Entry) -> Result<PathBuf> {
     let mut bytes = [0u8; 3];
     getrandom::fill(&mut bytes).map_err(|e| anyhow!("Failed to get random bytes: {e}"))?;
     let path = dir.join(format!("{}-{}.md", entry.date, hex::encode(bytes)));
-    std::fs::write(&path, format(entry))
-        .with_context(|| format!("Failed to write {}", path.display()))?;
+    overwrite(&path, entry)?;
     Ok(path)
+}
+
+pub fn overwrite(path: &Path, entry: &Entry) -> Result<()> {
+    std::fs::write(path, format(entry))
+        .with_context(|| format!("Failed to write {}", path.display()))
+}
+
+pub fn read(path: &Path) -> Result<Entry> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+    parse(&raw).with_context(|| format!("Invalid entry {}", path.display()))
 }
 
 /// One booked time record, as listed in the ledger.
@@ -200,13 +225,18 @@ mod tests {
             hours: 1.5,
             date: "2026-11-12".into(),
             project: project.map(Into::into),
+            focus_minutes: None,
             description: "Ledger for time entries".into(),
         }
     }
 
     #[test]
     fn round_trips_entries() {
-        for e in [entry(None), entry(Some("web"))] {
+        let hooked = Entry {
+            focus_minutes: Some(85),
+            ..entry(None)
+        };
+        for e in [entry(None), entry(Some("web")), hooked] {
             assert_eq!(parse(&format(&e)).unwrap(), e);
         }
         assert_eq!(
