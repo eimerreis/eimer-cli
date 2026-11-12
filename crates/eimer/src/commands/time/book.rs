@@ -46,9 +46,9 @@ pub struct SuggestArgs {
     /// Start of the window: yyyy-mm-dd or RFC 3339 (defaults to the last `add`, else today)
     #[arg(long)]
     since: Option<String>,
-    /// Pause that ends an active span, e.g. 15m
-    #[arg(long, default_value = "15m")]
-    idle: String,
+    /// Prompts closer than this count as continuous focus, e.g. 10m
+    #[arg(long, default_value = "10m")]
+    gap: String,
     /// Print machine-readable JSON
     #[arg(long, short = 'j')]
     json: bool,
@@ -152,60 +152,90 @@ pub fn init(args: InitArgs) -> Result<()> {
 struct Suggestion {
     hours: f64,
     since: String,
-    active_minutes: i64,
+    focus_minutes: i64,
+    agent_minutes: i64,
+    prompts: usize,
     days: Vec<DayActivity>,
 }
 
 #[derive(Serialize)]
 struct DayActivity {
     date: String,
-    active_minutes: i64,
+    focus_minutes: i64,
+    agent_minutes: i64,
 }
 
 pub fn suggest(args: SuggestArgs) -> Result<()> {
     let repo = RepoIdentity::current()?;
-    let idle = (duration::parse(&args.idle)? * 3600.0).round() as i64;
+    let gap = (duration::parse(&args.gap)? * 3600.0).round() as i64;
     let since = match &args.since {
         Some(value) => parse_since(value)?,
         None => activity::covered_until(&repo)?.unwrap_or_else(start_of_today),
     };
     let now = chrono::Local::now().timestamp();
-    let spans = activity::spans(&activity::collect(&repo, since)?, idle);
-    let active = activity::seconds_within(&spans, since, now);
+    let sessions = activity::collect(&repo, since)?;
+    let focus = activity::focus_spans(&sessions, gap);
+    let events: Vec<_> = sessions.iter().map(|s| s.events.clone()).collect();
+    let agent = activity::spans(&events, gap);
+    let within = |spans: &[activity::Span], from: i64, to: i64| {
+        activity::seconds_within(spans, from.max(since), to.min(now))
+    };
 
     let mut days = Vec::new();
     let mut day = local_date(since);
     while day <= chrono::Local::now().date_naive() {
         let (from, to) = day_bounds(day);
-        let seconds = activity::seconds_within(&spans, from.max(since), to.min(now));
-        if seconds > 0 {
+        let (focus_secs, agent_secs) = (within(&focus, from, to), within(&agent, from, to));
+        if focus_secs > 0 || agent_secs > 0 {
             days.push(DayActivity {
                 date: day.format("%Y-%m-%d").to_string(),
-                active_minutes: seconds / 60,
+                focus_minutes: focus_secs / 60,
+                agent_minutes: agent_secs / 60,
             });
         }
         day = day.succ_opt().expect("date in range");
     }
+    let focus_secs = within(&focus, since, now);
     let s = Suggestion {
-        hours: suggestion::round_up(active),
+        hours: suggestion::round_up(focus_secs),
         since: format_local(since),
-        active_minutes: active / 60,
+        focus_minutes: focus_secs / 60,
+        agent_minutes: within(&agent, since, now) / 60,
+        prompts: sessions
+            .iter()
+            .flat_map(|s| &s.prompts)
+            .filter(|&&p| p >= since)
+            .count(),
         days,
     };
     if args.json {
         return ui::print_json(&s);
     }
-    for d in &s.days {
-        println!("{}  {}", d.date, format_minutes(d.active_minutes));
+    if !s.days.is_empty() {
+        let rows = s.days.iter().map(|d| {
+            vec![
+                d.date.clone(),
+                format_minutes(d.focus_minutes),
+                format_minutes(d.agent_minutes),
+            ]
+        });
+        println!(
+            "{}",
+            ui::render_table(["Date", "Focus", "Agent active"], rows)
+        );
     }
     ui::print_info(
         &format!(
-            "Suggested: {} ({} agent activity since {})",
+            "Suggested: {} ({} focus over {} prompts since {}; agent active {})",
             duration::format(s.hours),
-            format_minutes(s.active_minutes),
-            s.since
+            format_minutes(s.focus_minutes),
+            s.prompts,
+            s.since,
+            format_minutes(s.agent_minutes)
         ),
-        Some("A suggestion only; the user decides the recorded duration."),
+        Some(
+            "Focus: from prompt to prompt when they are close, plus 2 min before each. A suggestion only; the user decides.",
+        ),
     );
     Ok(())
 }

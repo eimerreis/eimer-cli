@@ -55,7 +55,7 @@ Run any command with `--help` for flags. Most commands support `--json`.
 eimer time login                  # opens the browser, receives the redirect on localhost:1995
 eimer time projects               # find the project id
 eimer time init <projectId>       # writes .time.json in the repo (commit it)
-eimer time suggest                # suggestion from agent activity since the last `add`
+eimer time suggest                # focus time from your prompts since the last `add`
 eimer time add 1.5h -d "what"     # writes .time/<date>-<id>.md (commit it with the PR)
 eimer time none "internal tooling" # PR body: Time: none (internal tooling)
 eimer time status                 # exit 1 when the PR has neither
@@ -74,7 +74,7 @@ project: web        # only when .time.json lists several projects
 Ledger for pending time entries
 ```
 
-- `suggest` reads local agent transcripts (Claude Code in `~/.claude/projects`, Codex in `~/.codex/sessions`; T3 Code runs both) whose working directory belongs to this repo, including its worktrees. Events closer than `--idle` (default 15m) form active spans; parallel sessions are merged so time counts once. It starts where the last `add` ended (kept per repo in `~/.config/eimer/time-activity.json`), else at midnight; override with `--since`. Time outside the agent (calls, browser review) is not seen; the user decides the recorded duration.
+- `suggest` reads local agent transcripts (Claude Code in `~/.claude/projects`, Codex in `~/.codex/sessions`; T3 Code runs both) whose working directory belongs to this repo, including its worktrees. It suggests **focus time**: from one of your prompts to the next when they are at most `--gap` apart (default 10m), plus 2 minutes before every prompt. When the agent works alone for longer, only your return counts. Prompts sent by tools (task notifications, PR updates, subagents, title generation) are ignored, and parallel sessions count once. It also shows how long the agent was active. The window starts where the last `add` ended (kept per repo in `~/.config/eimer/time-activity.json`), else at midnight; override with `--since`. Time outside the agent is not seen; the user decides the recorded duration.
 - `book` merges the descriptions of entries of the same project and day into one record (`<repo>: a; b`), deletes the booked entries and appends a section to `TIME.md`. Commit both in a PR; a PR that only touches `.time/`, `TIME.md` and `.changeset/` passes the check.
 - Login uses the Keycloak client `time-cli-moritz` and receives the redirect on `http://localhost:1995/callback`. The token is kept in the macOS keychain (`eimer.time`; elsewhere `~/.config/eimer/time-token.json`, mode 0600) and refreshes automatically. Override with `EIMER_TIME_CLIENT_ID`, `EIMER_TIME_REDIRECT_URI`, `EIMER_TIME_API_URL`. A non-loopback redirect URI (e.g. the Raycast extension's client) falls back to pasting the redirect URL.
 - With one project in `.time.json` no alias is needed; with several pass `--project <alias>`.

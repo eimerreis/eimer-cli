@@ -172,21 +172,57 @@ pub fn seconds_within(spans: &[Span], from: i64, to: i64) -> i64 {
         .sum()
 }
 
-/// Event streams (one per transcript file) of this repo since `since` (unix seconds).
-pub fn collect(repo: &RepoIdentity, since: i64) -> Result<Vec<Vec<i64>>> {
+/// One transcript of this repo: all event times and the times of the user's own prompts.
+#[derive(Debug, Default, PartialEq)]
+pub struct Session {
+    pub events: Vec<i64>,
+    pub prompts: Vec<i64>,
+}
+
+/// Time counted before each prompt for reading the answer and writing the prompt.
+pub const PROMPT_LEAD_SECS: i64 = 2 * 60;
+
+/// Focus spans: the user is on a session from one prompt to the next when they
+/// follow each other within `gap`; otherwise (the agent worked alone, or the user was
+/// away) only `PROMPT_LEAD_SECS` before the next prompt counts.
+pub fn focus_spans(sessions: &[Session], gap: i64) -> Vec<Span> {
+    let mut spans = Vec::new();
+    for session in sessions {
+        let mut prompts = session.prompts.clone();
+        prompts.sort_unstable();
+        for (i, &prompt) in prompts.iter().enumerate() {
+            spans.push(Span {
+                start: prompt - PROMPT_LEAD_SECS,
+                end: prompt,
+            });
+            if let Some(&next) = prompts.get(i + 1)
+                && next - prompt <= gap
+            {
+                spans.push(Span {
+                    start: prompt,
+                    end: next,
+                });
+            }
+        }
+    }
+    merge(spans)
+}
+
+/// Transcripts of this repo touched since `since` (unix seconds).
+pub fn collect(repo: &RepoIdentity, since: i64) -> Result<Vec<Session>> {
     let home = crate::core::config::home_dir()?;
     let mut files = Vec::new();
     for root in [home.join(".claude/projects"), home.join(".codex/sessions")] {
         jsonl_files(&root, since, &mut files);
     }
     let mut cache = HashMap::new();
-    let mut streams = Vec::new();
+    let mut sessions = Vec::new();
     for file in files {
-        if let Some(events) = read_transcript(&file, repo, since, &mut cache) {
-            streams.push(events);
+        if let Some(session) = read_transcript(&file, repo, since, &mut cache) {
+            sessions.push(session);
         }
     }
-    Ok(streams)
+    Ok(sessions)
 }
 
 /// `*.jsonl` below `dir`, skipping files untouched since `since`.
@@ -214,50 +250,159 @@ fn modified(meta: &std::fs::Metadata) -> i64 {
 
 /// The fields this module reads from both transcript formats.
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Line {
     timestamp: Option<String>,
+    #[serde(rename = "type")]
+    kind: Option<String>,
     /// Claude Code: on most lines.
     cwd: Option<String>,
-    /// Codex: `session_meta` / `turn_context` payloads.
+    /// Claude Code: user turn content.
+    message: Option<Message>,
+    #[serde(default)]
+    is_meta: bool,
+    #[serde(default)]
+    is_sidechain: bool,
+    #[serde(default)]
+    is_compact_summary: bool,
+    /// Claude Code: "system" for injected prompts (task notifications).
+    prompt_source: Option<String>,
+    /// Codex: `session_meta`/`turn_context` (cwd) and `response_item` (messages).
     payload: Option<Payload>,
+}
+
+#[derive(Deserialize)]
+struct Message {
+    content: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
 struct Payload {
     cwd: Option<String>,
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    role: Option<String>,
+    content: Option<serde_json::Value>,
 }
 
-/// Timestamps of a transcript that belongs to `repo`; `None` for other repos.
+/// Prompts that tools, not the user, send; they do not count as interaction.
+const MACHINE_PROMPTS: &[&str] = &[
+    "<task-notification>",
+    "<local-command-stdout>",
+    "<local-command-caveat>",
+    "<system-reminder>",
+    "<environment_context>",
+    "<user_instructions>",
+    "<turn_aborted>",
+    "# AGENTS.md instructions",
+    "Update on pull request #",
+    "Context handoff (",
+    "Delegated task node:",
+];
+
+/// Sessions whose first prompt starts like this are run by another agent or the
+/// harness (subagents, title and branch name generation) and are skipped.
+const MACHINE_SESSIONS: &[&str] = &[
+    "Delegated task node:",
+    "Generate a title that",
+    "You generate concise git branch",
+];
+
+fn is_machine_session(first_prompt: &str) -> bool {
+    MACHINE_SESSIONS.iter().any(|p| first_prompt.starts_with(p))
+        || (first_prompt.starts_with("Act as the ") && first_prompt.contains("sub-agent"))
+}
+
+/// Text of a user turn typed by the user; `None` for tool results and injected text.
+fn user_prompt(line: &Line) -> Option<String> {
+    let content = match line.kind.as_deref() {
+        Some("user") => {
+            if line.is_meta
+                || line.is_sidechain
+                || line.is_compact_summary
+                || line.prompt_source.as_deref() == Some("system")
+            {
+                return None;
+            }
+            line.message.as_ref()?.content.as_ref()?
+        }
+        Some("response_item") => {
+            let payload = line.payload.as_ref()?;
+            if payload.kind.as_deref() != Some("message") || payload.role.as_deref() != Some("user")
+            {
+                return None;
+            }
+            payload.content.as_ref()?
+        }
+        _ => return None,
+    };
+    let text = match content {
+        serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Array(blocks) => {
+            if blocks
+                .iter()
+                .any(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_result"))
+            {
+                return None;
+            }
+            blocks
+                .iter()
+                .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+        _ => return None,
+    };
+    let text = text.trim().to_string();
+    (!MACHINE_PROMPTS.iter().any(|p| text.starts_with(p))).then_some(text)
+}
+
+/// The session of a transcript that belongs to `repo`; `None` for other repos and
+/// for sessions another agent runs.
 fn read_transcript(
     path: &Path,
     repo: &RepoIdentity,
     since: i64,
     cache: &mut HashMap<PathBuf, bool>,
-) -> Option<Vec<i64>> {
+) -> Option<Session> {
     let reader = BufReader::new(std::fs::File::open(path).ok()?);
-    let mut matched = None;
-    let mut events = Vec::new();
+    let mut matched = false;
+    let mut first_prompt_seen = false;
+    let mut session = Session::default();
     for raw in reader.lines() {
         let Ok(raw) = raw else { break };
         let Ok(line) = serde_json::from_str::<Line>(&raw) else {
             continue;
         };
-        if matched.is_none()
-            && let Some(cwd) = line.cwd.or_else(|| line.payload.and_then(|p| p.cwd))
-        {
-            let cwd = PathBuf::from(cwd.trim_start_matches("file://"));
-            if !repo.contains(&cwd, cache) {
+        if !matched {
+            let cwd = line
+                .cwd
+                .clone()
+                .or_else(|| line.payload.as_ref().and_then(|p| p.cwd.clone()));
+            if let Some(cwd) = cwd {
+                if !repo.contains(Path::new(cwd.trim_start_matches("file://")), cache) {
+                    return None;
+                }
+                matched = true;
+            }
+        }
+        let Some(ts) = line.timestamp.as_deref().and_then(parse_timestamp) else {
+            continue;
+        };
+        if let Some(prompt) = user_prompt(&line) {
+            if !first_prompt_seen && is_machine_session(&prompt) {
                 return None;
             }
-            matched = Some(true);
+            first_prompt_seen = true;
+            if ts >= since {
+                session.prompts.push(ts);
+            }
         }
-        if let Some(ts) = line.timestamp.as_deref().and_then(parse_timestamp)
-            && ts >= since
-        {
-            events.push(ts);
+        if ts >= since {
+            session.events.push(ts);
         }
     }
-    matched.map(|_| events)
+    matched.then_some(session)
 }
 
 fn parse_timestamp(value: &str) -> Option<i64> {
@@ -332,6 +477,55 @@ mod tests {
     }
 
     #[test]
+    fn counts_focus_between_close_prompts_only() {
+        let session = Session {
+            events: vec![],
+            // quick back-and-forth, then the agent builds for 30 minutes alone
+            prompts: vec![60 * MIN, 63 * MIN, 70 * MIN, 100 * MIN],
+        };
+        assert_eq!(
+            focus_spans(&[session], 10 * MIN),
+            vec![
+                Span {
+                    start: 58 * MIN,
+                    end: 70 * MIN
+                },
+                Span {
+                    start: 98 * MIN,
+                    end: 100 * MIN
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn filters_machine_prompts_and_sessions() {
+        let line = |json: &str| serde_json::from_str::<Line>(json).unwrap();
+        assert_eq!(
+            user_prompt(&line(r#"{"type":"user","message":{"content":"fix it"}}"#)).as_deref(),
+            Some("fix it")
+        );
+        for json in [
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":"x"}]}}"#,
+            r#"{"type":"user","isMeta":true,"message":{"content":"x"}}"#,
+            r#"{"type":"user","promptSource":"system","message":{"content":"x"}}"#,
+            r#"{"type":"user","message":{"content":"<task-notification>x"}}"#,
+            r#"{"type":"assistant","message":{"content":"x"}}"#,
+            r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>"}]}}"#,
+            r#"{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}}"#,
+        ] {
+            assert_eq!(user_prompt(&line(json)), None, "{json}");
+        }
+        assert_eq!(
+            user_prompt(&line(r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"go"}]}}"#)).as_deref(),
+            Some("go")
+        );
+        assert!(is_machine_session("Act as the test sub-agent for x"));
+        assert!(is_machine_session("Generate a title that will help"));
+        assert!(!is_machine_session("Act as if this was prod"));
+    }
+
+    #[test]
     fn reads_claude_and_codex_lines() {
         let dir = tempfile::tempdir().unwrap();
         let repo = RepoIdentity {
@@ -342,19 +536,27 @@ mod tests {
         std::fs::write(
             &claude,
             "{\"type\":\"session-owner\"}\n\
-             {\"timestamp\":\"2026-11-12T10:00:00Z\",\"cwd\":\"/u/.t3/worktrees/demo/t3-1\"}\n\
-             {\"timestamp\":\"2026-11-12T10:05:00Z\"}\n",
+             {\"timestamp\":\"2026-11-12T10:00:00Z\",\"type\":\"user\",\"cwd\":\"/u/.t3/worktrees/demo/t3-1\",\"message\":{\"content\":\"go\"}}\n\
+             {\"timestamp\":\"2026-11-12T10:05:00Z\",\"type\":\"assistant\"}\n",
         )
         .unwrap();
-        let codex = dir.path().join("x.jsonl");
+        let other = dir.path().join("x.jsonl");
         std::fs::write(
-            &codex,
+            &other,
             "{\"timestamp\":\"2026-11-12T10:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/u/other\"}}\n",
         )
         .unwrap();
+        let subagent = dir.path().join("s.jsonl");
+        std::fs::write(
+            &subagent,
+            "{\"timestamp\":\"2026-11-12T10:00:00Z\",\"type\":\"user\",\"cwd\":\"/u/.t3/worktrees/demo/t3-2\",\"message\":{\"content\":\"Act as the test sub-agent\"}}\n",
+        )
+        .unwrap();
         let mut cache = HashMap::new();
-        let events = read_transcript(&claude, &repo, 0, &mut cache).unwrap();
-        assert_eq!(events.len(), 2);
-        assert!(read_transcript(&codex, &repo, 0, &mut cache).is_none());
+        let session = read_transcript(&claude, &repo, 0, &mut cache).unwrap();
+        assert_eq!(session.events.len(), 2);
+        assert_eq!(session.prompts.len(), 1);
+        assert!(read_transcript(&other, &repo, 0, &mut cache).is_none());
+        assert!(read_transcript(&subagent, &repo, 0, &mut cache).is_none());
     }
 }
