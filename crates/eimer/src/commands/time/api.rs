@@ -26,6 +26,20 @@ pub struct TimeRecord {
     pub description: String,
     /// hours * 100
     pub duration: i64,
+    /// yyyy-mm-dd (the API may append a time part)
+    #[serde(default)]
+    pub date: String,
+    #[serde(default)]
+    pub invoiced: bool,
+}
+
+/// Budget progress from the dashboard overview, as the API reports it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectProgress {
+    pub id: u64,
+    #[serde(default)]
+    pub progress: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -100,6 +114,47 @@ impl TimeClient {
             projects: Vec<Project>,
         }
         Ok(self.get::<Response>("projects.get", &[])?.projects)
+    }
+
+    /// Ids of projects that have time records not yet invoiced.
+    pub fn unbilled_project_ids(&self) -> Result<Vec<u64>> {
+        #[derive(Deserialize)]
+        struct Id {
+            id: u64,
+        }
+        #[derive(Deserialize)]
+        struct Response {
+            projects: Vec<Id>,
+        }
+        Ok(self
+            .get::<Response>("report.get-projects-with-unbilled-timerecords", &[])?
+            .projects
+            .into_iter()
+            .map(|p| p.id)
+            .collect())
+    }
+
+    pub fn project_overview(&self) -> Result<Vec<ProjectProgress>> {
+        #[derive(Deserialize)]
+        struct Response {
+            projects: Vec<ProjectProgress>,
+        }
+        Ok(self
+            .get::<Response>("dashboard.get-project-overview", &[])?
+            .projects)
+    }
+
+    /// Every record of a project, regardless of date.
+    pub fn all_time_records(&self, project_id: u64) -> Result<Vec<TimeRecord>> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Response {
+            time_records: Vec<TimeRecord>,
+        }
+        let project = project_id.to_string();
+        Ok(self
+            .get::<Response>("timerecords.get", &[("projectId", project.as_str())])?
+            .time_records)
     }
 
     pub fn time_records(&self, project_id: u64, from: &str, to: &str) -> Result<Vec<TimeRecord>> {
