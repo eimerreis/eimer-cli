@@ -7,7 +7,8 @@ Developer CLI for Azure DevOps and GitHub workflows: tasks, pull requests, pipel
 Linux / macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/eimerreis/eimer-cli/main/install.sh | sh
+curl - **pre-push hook:** on push it records the focus time since the last window into the branch's entry (`.time/*.md`, created on the first push with the branch's commit subjects as description), commits it as `chore(time): record <hours>` and stops the push once; push again to include it. Later pushes add to the same entry, but only stop the push when the rounded hours change. Hours you edited by hand grow by new focus only. Skip once with `EIMER_TIME_SKIP=1`; errors never block a push (the CI check still requires an entry). Repos with several projects in `.time.json` need `eimer time add --project`.
+-fsSL https://raw.githubusercontent.com/eimerreis/eimer-cli/main/install.sh | sh
 ```
 
 Windows (PowerShell):
@@ -54,9 +55,11 @@ Run any command with `--help` for flags. Most commands support `--json`.
 ```bash
 eimer time login                  # opens the browser, receives the redirect on localhost:1995
 eimer time projects               # find the project id
-eimer time init <projectId>       # writes .time.json in the repo (commit it)
+eimer time init <projectId>       # writes .time.json in the repo (commit it), installs the pre-push hook
+eimer time hook install           # pre-push hook for other clones (shared by their worktrees)
 eimer time suggest                # focus time from your prompts since the last `add`
 eimer time add 1.5h -d "what"     # writes .time/<date>-<id>.md (commit it with the PR)
+eimer time add --auto [--commit]  # what the hook does: record focus into this branch's entry
 eimer time none "internal tooling" # PR body: Time: none (internal tooling)
 eimer time status                 # exit 1 when the PR has neither
 eimer time pending                # open entries and the last booking

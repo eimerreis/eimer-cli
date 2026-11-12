@@ -3,6 +3,8 @@
 //! Every PR adds a pending entry (`.time/*.md`, via `eimer time add`) or states
 //! `Time: none (reason)` in its body; a required CI check blocks merging otherwise.
 //! `eimer time book` books pending entries and appends them to `TIME.md`.
+//! The pre-push hook (`eimer time hook install`, also run by `init`) writes and
+//! updates the branch's entry from measured focus time.
 
 mod activity;
 mod api;
@@ -10,6 +12,7 @@ mod auth;
 mod block;
 mod book;
 mod duration;
+mod hook;
 mod loopback;
 mod pending;
 mod repo;
@@ -39,6 +42,8 @@ enum TimeCommand {
     Suggest(book::SuggestArgs),
     /// Record a pending time entry in .time/
     Add(book::AddArgs),
+    /// Manage the git pre-push hook that records focus time automatically
+    Hook(hook::HookArgs),
     /// List pending entries and the last booking
     Pending(book::PendingArgs),
     /// Book pending entries to time and append them to TIME.md
@@ -65,6 +70,7 @@ pub fn run(args: TimeArgs) -> Result<()> {
         TimeCommand::Init(a) => book::init(a),
         TimeCommand::Suggest(a) => book::suggest(a),
         TimeCommand::Add(a) => book::add(a),
+        TimeCommand::Hook(a) => hook::run(a),
         TimeCommand::Pending(a) => book::pending(a),
         TimeCommand::Book(a) => book::book(a),
         TimeCommand::None(a) => book::none(a),

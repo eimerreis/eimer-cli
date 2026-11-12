@@ -208,6 +208,12 @@ pub fn focus_spans(sessions: &[Session], gap: i64) -> Vec<Span> {
     merge(spans)
 }
 
+/// Focus seconds of this repo within `[since, now)`.
+pub fn focus_seconds(repo: &RepoIdentity, since: i64, now: i64, gap: i64) -> Result<i64> {
+    let spans = focus_spans(&collect(repo, since)?, gap);
+    Ok(seconds_within(&spans, since, now))
+}
+
 /// Transcripts of this repo touched since `since` (unix seconds).
 pub fn collect(repo: &RepoIdentity, since: i64) -> Result<Vec<Session>> {
     let home = crate::core::config::home_dir()?;

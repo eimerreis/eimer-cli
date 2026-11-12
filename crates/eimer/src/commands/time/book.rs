@@ -57,7 +57,14 @@ pub struct SuggestArgs {
 #[derive(Args)]
 pub struct AddArgs {
     /// Duration, e.g. 1.5h, 90m, 1h30m, 1:30
-    duration: String,
+    #[arg(required_unless_present = "auto", conflicts_with = "auto")]
+    duration: Option<String>,
+    /// Record the measured focus into this branch's entry, as the pre-push hook does
+    #[arg(long, conflicts_with_all = ["description", "project", "date"])]
+    auto: bool,
+    /// With --auto: also commit the entry
+    #[arg(long, requires = "auto")]
+    commit: bool,
     /// What was done; merged into the time record description on booking
     #[arg(long, short = 'd')]
     description: Option<String>,
@@ -145,6 +152,9 @@ pub fn init(args: InitArgs) -> Result<()> {
         project.id,
         repo::CONFIG_FILE
     ));
+    if let Err(err) = super::hook::install(false) {
+        ui::print_warning(&format!("Pre-push hook not installed: {err:#}"), None);
+    }
     Ok(())
 }
 
@@ -241,7 +251,14 @@ pub fn suggest(args: SuggestArgs) -> Result<()> {
 }
 
 pub fn add(args: AddArgs) -> Result<()> {
-    let hours = duration::parse(&args.duration)?;
+    let Some(duration_arg) = args.duration else {
+        match super::hook::record(args.commit)? {
+            Some(message) => ui::print_success(&message),
+            None => ui::print_info("No new focus time since the last entry", None),
+        }
+        return Ok(());
+    };
+    let hours = duration::parse(&duration_arg)?;
     let date = match args.date {
         Some(date) => {
             chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d")
@@ -260,6 +277,7 @@ pub fn add(args: AddArgs) -> Result<()> {
         hours,
         date,
         project: (config.projects.len() > 1).then(|| project.alias.clone()),
+        focus_minutes: None,
         description,
     };
     let root = repo::root()?;
@@ -522,7 +540,7 @@ fn parse_since(value: &str) -> Result<i64> {
     Ok(day_bounds(date).0)
 }
 
-fn start_of_today() -> i64 {
+pub(super) fn start_of_today() -> i64 {
     day_bounds(chrono::Local::now().date_naive()).0
 }
 
