@@ -41,7 +41,7 @@ Requirements: [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cl
 | `pr create\|list\|show\|comments\|open\|copy` | Pull requests (Azure DevOps and GitHub) |
 | `pipeline runs\|list\|show\|open\|trigger\|watch` | Azure DevOps pipelines |
 | `release changelog\|approve\|configure` | Release changelogs (Teams posting) and approvals |
-| `eimer time login\|projects\|init\|suggest\|book\|none\|status` | Book PR work to codeunity time ([below](#time-tracking)) |
+| `eimer time login\|projects\|init\|suggest\|add\|none\|status\|pending\|book` | Record work to codeunity time ([below](#time-tracking)) |
 | `eimer configure` | Shared defaults in `~/.config/eimer/config.json` |
 | `eimer upgrade` / `eimer link` | Self-update / (re)create the shortcuts |
 
@@ -49,26 +49,35 @@ Run any command with `--help` for flags. Most commands support `--json`.
 
 ## Time tracking
 
-`eimer time` books PR work to codeunity time and records it in the PR body, so a required CI check can block merging until every PR says how much time it cost, or that none is billed:
-
-```
-Time: 1.5h → time#12345        # booked
-Time: none (internal tooling)  # explicitly not billable
-```
+`eimer time` records work to codeunity time. Every PR adds a pending entry under `.time/` (like a changeset) or states that no time is billed; a required CI check blocks merging otherwise. `eimer time book` later books all pending entries and appends them to `TIME.md`, so the repo shows when time was last booked and what is still open.
 
 ```bash
-eimer time login                 # opens the browser, receives the redirect on localhost:1995
-eimer time projects              # find the project id
-eimer time init <projectId>      # writes .time.json in the repo (commit it)
-eimer time suggest               # duration suggestion from the PR's commits
-eimer time book 1.5h             # create or update the record, write the Time line
-eimer time none "internal tooling"
-eimer time status                # exit 1 when the PR has no valid Time line
+eimer time login                  # opens the browser, receives the redirect on localhost:1995
+eimer time projects               # find the project id
+eimer time init <projectId>       # writes .time.json in the repo (commit it)
+eimer time suggest                # focus time from your prompts since the last `add`
+eimer time add 1.5h -d "what"     # writes .time/<date>-<id>.md (commit it with the PR)
+eimer time none "internal tooling" # PR body: Time: none (internal tooling)
+eimer time status                 # exit 1 when the PR has neither
+eimer time pending                # open entries and the last booking
+eimer time book [--dry-run]       # one record per project and day, then TIME.md
 ```
 
+Entry file:
+
+```markdown
+---
+hours: 1.5
+date: 2026-11-12
+project: web        # only when .time.json lists several projects
+---
+Ledger for pending time entries
+```
+
+- `suggest` reads local agent transcripts (Claude Code in `~/.claude/projects`, Codex in `~/.codex/sessions`; T3 Code runs both) whose working directory belongs to this repo, including its worktrees. It suggests **focus time**: from one of your prompts to the next when they are at most `--gap` apart (default 10m), plus 2 minutes before every prompt. When the agent works alone for longer, only your return counts. Prompts sent by tools (task notifications, PR updates, subagents, title generation) are ignored, and parallel sessions count once. It also shows how long the agent was active. The window starts where the last `add` ended (kept per repo in `~/.config/eimer/time-activity.json`), else at midnight; override with `--since`. Time outside the agent is not seen; the user decides the recorded duration.
+- `book` merges the descriptions of entries of the same project and day into one record (`<repo>: a; b`), deletes the booked entries and appends a section to `TIME.md`. Commit both in a PR; a PR that only touches `.time/`, `TIME.md` and `.changeset/` passes the check.
 - Login uses the Keycloak client `time-cli-moritz` and receives the redirect on `http://localhost:1995/callback`. The token is kept in the macOS keychain (`eimer.time`; elsewhere `~/.config/eimer/time-token.json`, mode 0600) and refreshes automatically. Override with `EIMER_TIME_CLIENT_ID`, `EIMER_TIME_REDIRECT_URI`, `EIMER_TIME_API_URL`. A non-loopback redirect URI (e.g. the Raycast extension's client) falls back to pasting the redirect URL.
 - With one project in `.time.json` no alias is needed; with several pass `--project <alias>`.
-- Rerunning `book` updates the existing record instead of booking twice; invoiced records are left alone.
 - The CI check, PR template and agent instructions for client repos live in [eimerreis/freelance-ops](https://github.com/eimerreis/freelance-ops).
 
 ## Contexts
