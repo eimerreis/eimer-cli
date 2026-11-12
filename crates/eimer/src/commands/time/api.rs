@@ -23,12 +23,9 @@ pub struct Project {
 #[serde(rename_all = "camelCase")]
 pub struct TimeRecord {
     pub id: u64,
-    pub date: String,
     pub description: String,
     /// hours * 100
     pub duration: i64,
-    #[serde(default)]
-    pub invoiced: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -134,65 +131,5 @@ impl TimeClient {
             .ok_or_else(|| {
                 anyhow!("Record was created but its id could not be resolved. Check time before booking again.")
             })
-    }
-
-    /// Callers must not update invoiced records; `isInvoiced` is required and sent as false.
-    pub fn update_record(&self, id: u64, input: &TimeRecordInput) -> Result<()> {
-        self.post(
-            "timerecords.update-multiple",
-            &[UpdateRecord::new(id, input)],
-        )?;
-        Ok(())
-    }
-
-    /// Looks the record up in the recent past (the API only lists by date range).
-    pub fn find_record(&self, project_id: u64, id: u64) -> Result<Option<TimeRecord>> {
-        let today = chrono::Local::now().date_naive();
-        let from = today - chrono::Days::new(120);
-        let records = self.time_records(
-            project_id,
-            &from.format("%Y-%m-%d").to_string(),
-            &today.format("%Y-%m-%d").to_string(),
-        )?;
-        Ok(records.into_iter().find(|r| r.id == id))
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct UpdateRecord<'a> {
-    id: u64,
-    #[serde(flatten)]
-    input: &'a TimeRecordInput,
-    is_invoiced: bool,
-}
-
-impl<'a> UpdateRecord<'a> {
-    fn new(id: u64, input: &'a TimeRecordInput) -> Self {
-        Self {
-            id,
-            input,
-            is_invoiced: false,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn update_body_is_flat() {
-        let input = TimeRecordInput {
-            project_id: 1,
-            date: "2026-11-06".into(),
-            description: "d".into(),
-            duration: 150,
-            on_site: false,
-        };
-        assert_eq!(
-            serde_json::to_string(&[UpdateRecord::new(7, &input)]).unwrap(),
-            r#"[{"id":7,"projectId":1,"date":"2026-11-06","description":"d","duration":150,"onSite":false,"isInvoiced":false}]"#
-        );
     }
 }

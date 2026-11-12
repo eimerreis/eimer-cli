@@ -6,7 +6,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::core::error::HintExt;
-use crate::core::process::{run_json, run_text, run_with_stdin, try_run_text};
+use crate::core::process::{run_json, run_text, run_with_stdin};
 
 pub const CONFIG_FILE: &str = ".time.json";
 
@@ -23,10 +23,15 @@ pub struct ProjectConfig {
     pub name: Option<String>,
 }
 
-fn config_path() -> Result<PathBuf> {
+/// Top level of the current worktree.
+pub fn root() -> Result<PathBuf> {
     let root = run_text(["git", "rev-parse", "--show-toplevel"])
         .context("Failed to find the git repository")?;
-    Ok(PathBuf::from(root.trim()).join(CONFIG_FILE))
+    Ok(PathBuf::from(root.trim()))
+}
+
+fn config_path() -> Result<PathBuf> {
+    Ok(root()?.join(CONFIG_FILE))
 }
 
 pub fn read_config() -> Result<Option<TimeConfig>> {
@@ -84,50 +89,24 @@ impl TimeConfig {
 #[derive(Debug, Clone)]
 pub struct PullRequest {
     pub number: u64,
-    pub title: String,
     pub body: String,
     pub url: String,
-    /// Unix seconds.
-    pub commit_times: Vec<i64>,
-}
-
-impl PullRequest {
-    /// "lauterbad-gmbh#12: Title", used as the time record description.
-    pub fn description(&self) -> String {
-        let reference = self
-            .url
-            .split("/pull/")
-            .next()
-            .and_then(|repo| repo.rsplit('/').next())
-            .map(|repo| format!("{repo}#{}", self.number))
-            .unwrap_or_else(|| format!("#{}", self.number));
-        format!("{reference}: {}", self.title)
-    }
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GhPr {
     number: u64,
-    title: String,
     #[serde(default)]
     body: String,
     url: String,
-    #[serde(default)]
-    commits: Vec<GhCommit>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct GhCommit {
-    committed_date: String,
 }
 
 /// The given PR, or the PR of the current branch.
 pub fn pull_request(pr: Option<u64>) -> Result<PullRequest> {
     let mut cmd = vec!["gh".to_string(), "pr".into(), "view".into()];
     cmd.extend(pr.map(|n| n.to_string()));
-    cmd.extend(["--json".into(), "number,title,body,url,commits".into()]);
+    cmd.extend(["--json".into(), "number,body,url".into()]);
     let data: GhPr = run_json(&cmd)
         .context(match pr {
             Some(n) => format!("Failed to load PR #{n}"),
@@ -136,28 +115,43 @@ pub fn pull_request(pr: Option<u64>) -> Result<PullRequest> {
         .hint("Open the PR first or pass --pr <number>.")?;
     Ok(PullRequest {
         number: data.number,
-        title: data.title,
         body: data.body,
         url: data.url,
-        commit_times: data
-            .commits
-            .iter()
-            .filter_map(|c| chrono::DateTime::parse_from_rfc3339(&c.committed_date).ok())
-            .map(|d| d.timestamp())
-            .collect(),
     })
 }
 
-/// Commit times of the PR, or of the current branch's commits when it has no PR yet.
-pub fn commit_times(pr: Option<u64>) -> Result<Vec<i64>> {
-    if pr.is_some() {
-        return Ok(pull_request(pr)?.commit_times);
-    }
-    if let Ok(found) = pull_request(None) {
-        return Ok(found.commit_times);
-    }
-    let log = try_run_text(["git", "log", "--format=%ct", "origin/HEAD..HEAD"]).unwrap_or_default();
-    Ok(log.lines().filter_map(|l| l.trim().parse().ok()).collect())
+#[derive(Debug, Deserialize)]
+pub struct PrFile {
+    pub filename: String,
+    /// added, removed, modified, renamed, ...
+    pub status: String,
+}
+
+pub fn pr_files(number: u64) -> Result<Vec<PrFile>> {
+    let raw = run_text([
+        "gh",
+        "api",
+        "--paginate",
+        "--jq",
+        ".[] | {filename, status}",
+        &format!("repos/{{owner}}/{{repo}}/pulls/{number}/files"),
+    ])
+    .with_context(|| format!("Failed to list the files of PR #{number}"))?;
+    raw.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).context("Failed to parse PR files"))
+        .collect()
+}
+
+/// `.time/<name>.md` (not the README).
+pub fn is_pending_entry(path: &str) -> bool {
+    path.strip_prefix(".time/")
+        .is_some_and(|name| name.ends_with(".md") && !name.contains('/') && name != "README.md")
+}
+
+/// Files a booking PR may touch.
+pub fn is_booking_file(path: &str) -> bool {
+    path.starts_with(".time/") || path == "TIME.md" || path.starts_with(".changeset/")
 }
 
 pub fn set_body(number: u64, body: &str) -> Result<()> {
@@ -195,14 +189,13 @@ mod tests {
     }
 
     #[test]
-    fn describes_pull_request() {
-        let pr = PullRequest {
-            number: 12,
-            title: "feat: x".into(),
-            body: String::new(),
-            url: "https://github.com/eimerreis/lauterbad-gmbh/pull/12".into(),
-            commit_times: vec![],
-        };
-        assert_eq!(pr.description(), "lauterbad-gmbh#12: feat: x");
+    fn classifies_time_files() {
+        assert!(is_pending_entry(".time/2026-11-12-ab12cd.md"));
+        assert!(!is_pending_entry(".time/README.md"));
+        assert!(!is_pending_entry(".time/x/y.md"));
+        assert!(!is_pending_entry("src/.time/a.md"));
+        assert!(is_booking_file("TIME.md"));
+        assert!(is_booking_file(".changeset/x.md"));
+        assert!(!is_booking_file("src/main.rs"));
     }
 }

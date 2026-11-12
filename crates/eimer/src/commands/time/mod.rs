@@ -1,14 +1,17 @@
-//! `eimer time`: book PR work to codeunity time and record it in the PR body.
+//! `eimer time`: record work to codeunity time.
 //!
-//! Every PR gets a `Time:` line (`Time: 1.5h → time#123` or `Time: none (reason)`);
-//! a required CI check blocks merging without one.
+//! Every PR adds a pending entry (`.time/*.md`, via `eimer time add`) or states
+//! `Time: none (reason)` in its body; a required CI check blocks merging otherwise.
+//! `eimer time book` books pending entries and appends them to `TIME.md`.
 
+mod activity;
 mod api;
 mod auth;
 mod block;
 mod book;
 mod duration;
 mod loopback;
+mod pending;
 mod repo;
 mod store;
 mod suggest;
@@ -32,13 +35,17 @@ enum TimeCommand {
     Projects(book::ProjectsArgs),
     /// Add a time project to this repo's .time.json
     Init(book::InitArgs),
-    /// Suggest a duration from the PR's commit times
+    /// Suggest a duration from agent activity (Claude Code, Codex) in this repo
     Suggest(book::SuggestArgs),
-    /// Create or update the PR's time record and write its Time line
+    /// Record a pending time entry in .time/
+    Add(book::AddArgs),
+    /// List pending entries and the last booking
+    Pending(book::PendingArgs),
+    /// Book pending entries to time and append them to TIME.md
     Book(book::BookArgs),
     /// Mark the PR as not billable
     None(book::NoneArgs),
-    /// Show the PR's Time line (exit 1 when missing or invalid)
+    /// Check the PR adds a time entry or has a Time line (exit 1 otherwise)
     Status(book::StatusArgs),
 }
 
@@ -57,6 +64,8 @@ pub fn run(args: TimeArgs) -> Result<()> {
         TimeCommand::Projects(a) => book::projects(a),
         TimeCommand::Init(a) => book::init(a),
         TimeCommand::Suggest(a) => book::suggest(a),
+        TimeCommand::Add(a) => book::add(a),
+        TimeCommand::Pending(a) => book::pending(a),
         TimeCommand::Book(a) => book::book(a),
         TimeCommand::None(a) => book::none(a),
         TimeCommand::Status(a) => book::status(a),

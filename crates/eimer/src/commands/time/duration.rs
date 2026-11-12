@@ -55,7 +55,8 @@ fn parse_hours(value: &str) -> Option<f64> {
 
 /// "1.5h", "2h", "0.33h".
 pub fn format(hours: f64) -> String {
-    let rounded = (hours * 100.0).round() / 100.0;
+    // `+ 0.0` turns -0.0 (the sum of no values) into 0.0.
+    let rounded = (hours * 100.0).round() / 100.0 + 0.0;
     let text = format!("{rounded:.2}");
     let text = text.trim_end_matches('0').trim_end_matches('.');
     format!("{text}h")
@@ -63,10 +64,6 @@ pub fn format(hours: f64) -> String {
 
 pub fn to_api(hours: f64) -> i64 {
     (hours * 100.0).round() as i64
-}
-
-pub fn from_api(duration: i64) -> f64 {
-    duration as f64 / 100.0
 }
 
 #[cfg(test)]
@@ -95,8 +92,8 @@ mod tests {
     fn formats_and_converts() {
         assert_eq!(format(1.5), "1.5h");
         assert_eq!(format(2.0), "2h");
+        assert_eq!(format(std::iter::empty::<f64>().sum()), "0h");
         assert_eq!(format(0.333), "0.33h");
         assert_eq!(to_api(1.5), 150);
-        assert_eq!(from_api(150), 1.5);
     }
 }
