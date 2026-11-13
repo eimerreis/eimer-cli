@@ -57,7 +57,7 @@ pub fn run(args: CopyArgs) -> Result<()> {
         let copied = match ui::spin_unless(args.json, "Copying pull request link", || {
             copy_to_clipboard(&markdown)
         }) {
-            Ok(()) => true,
+            Ok(_) => true,
             // Headless/SSH: still give the user the link instead of failing.
             Err(err) if err.downcast_ref::<NoClipboard>().is_some() => {
                 if !args.json {

@@ -3,7 +3,7 @@
 use std::io::IsTerminal;
 
 use anyhow::{Result, bail};
-use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
+use dialoguer::{Confirm, Input, MultiSelect, Select, theme::ColorfulTheme};
 
 pub fn is_interactive() -> bool {
     std::io::stdin().is_terminal() && std::io::stderr().is_terminal()
@@ -104,6 +104,21 @@ pub fn select(message: &str, items: &[String], default: usize) -> Result<usize> 
             .with_prompt(message)
             .items(items)
             .default(default)
+            .interact(),
+    )
+}
+
+/// Checkbox prompt; returns the indices of the checked items. `checked` sets the initial state.
+pub fn multi_select(message: &str, items: &[String], checked: &[bool]) -> Result<Vec<usize>> {
+    if !is_interactive() {
+        bail!("{message}: selection required (no interactive terminal to prompt)");
+    }
+    finish(
+        MultiSelect::with_theme(&ColorfulTheme::default())
+            .with_prompt(message)
+            .items(items)
+            .defaults(checked)
+            .max_length(20)
             .interact(),
     )
 }
