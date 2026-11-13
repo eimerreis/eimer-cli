@@ -42,7 +42,7 @@ Requirements: [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cl
 | `pr create\|list\|show\|comments\|open\|copy` | Pull requests (Azure DevOps and GitHub) |
 | `pipeline runs\|list\|show\|open\|trigger\|watch` | Azure DevOps pipelines |
 | `release changelog\|approve\|configure` | Release changelogs (Teams posting) and approvals |
-| `eimer time login\|projects\|init\|suggest\|add\|none\|status\|pending\|book` | Record work to codeunity time ([below](#time-tracking)) |
+| `eimer time login\|projects\|init\|suggest\|add\|none\|status\|pending\|book\|report` | Record work to codeunity time ([below](#time-tracking)) |
 | `eimer product init\|status\|update\|check` | Public update posts from Changesets changelogs ([below](#product-updates)) |
 | `eimer configure` | Shared defaults in `~/.config/eimer/config.json` |
 | `eimer upgrade` / `eimer link` | Self-update / (re)create the shortcuts |
@@ -66,6 +66,7 @@ eimer time none "internal tooling" # PR body: Time: none (internal tooling)
 eimer time status                 # exit 1 when the PR has neither
 eimer time pending                # open entries and the last booking
 eimer time book [--dry-run]       # one record per project and day, then TIME.md
+eimer time report [--from --to] [--json]  # hours per project: window (default this week), unbilled, budget
 ```
 
 Entry file:
