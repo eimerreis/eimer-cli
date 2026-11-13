@@ -18,5 +18,6 @@ Moritz Froelich (solo developer) - used daily to manage work items, PRs, CI/CD p
 2. **Pipeline Operations** - List/trigger/watch/open Azure DevOps pipeline runs
 3. **Release Workflows** - Generate grouped changelogs from pipeline commits, approve pending deployments, post to Teams
 4. **Task Management** - Create/list/start/close Azure DevOps work items in active sprint, across multiple org/project contexts (`.eimerrc`)
-5. **Unified Meta-CLI** - `eimer` wraps all sub-CLIs with shared config (`~/.config/eimer/config.json`)
-6. **Helpers** - Ad-hoc utility scripts (music collection/tagging, i18n tools)
+5. **Product Updates** - Turn Changesets changelogs into public update posts; a coding agent finishes each draft from a generated prompt
+6. **Unified Meta-CLI** - `eimer` wraps all sub-CLIs with shared config (`~/.config/eimer/config.json`)
+7. **Helpers** - Ad-hoc utility scripts (music collection/tagging, i18n tools)

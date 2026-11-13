@@ -21,6 +21,7 @@ graph TB
             PR[pr]
             PIPE[pipeline]
             REL[release]
+            PROD[product]
             CFGCMD[configure]
             UPG[upgrade / link]
         end
@@ -75,6 +76,12 @@ graph TB
 - `changelog` (commit range between production releases, grouped conventional commits, Teams posting), `approve`, `configure`
 - Config at `~/.config/tapio-release/config.json`, shared with the TS `@tapio/release`
 - Auth: `SYSTEM_ACCESSTOKEN` > `AZURE_DEVOPS_PAT` > `az`; context: `SYSTEM_COLLECTIONURI` + `SYSTEM_TEAMPROJECT` > `az devops configure` > git remote
+
+### `commands/product`
+- `init`, `status`, `update`, `check`: update posts from Changesets changelogs, configured per repo in `.eimer/product.json`
+- Pure core (changelog parser, front-matter subset, globs, coverage) with unit tests; git lookups behind the `changes::Git` trait
+- Hands work to a coding agent via a rendered prompt (built-in `default_prompt.md` or the repo's `promptTemplate`)
+- See [feature 009](features/009-product-updates.md)
 
 ### `commands/upgrade`
 - `upgrade [--check] [--to <version>] [--force]`: finds the newest `eimer/v*` GitHub Release, downloads the asset for the current platform, verifies its `.sha256`, replaces itself (`self-replace`)

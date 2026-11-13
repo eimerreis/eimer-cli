@@ -43,6 +43,7 @@ Requirements: [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cl
 | `pipeline runs\|list\|show\|open\|trigger\|watch` | Azure DevOps pipelines |
 | `release changelog\|approve\|configure` | Release changelogs (Teams posting) and approvals |
 | `eimer time login\|projects\|init\|suggest\|add\|none\|status\|pending\|book` | Record work to codeunity time ([below](#time-tracking)) |
+| `eimer product init\|status\|update\|check` | Public update posts from Changesets changelogs ([below](#product-updates)) |
 | `eimer configure` | Shared defaults in `~/.config/eimer/config.json` |
 | `eimer upgrade` / `eimer link` | Self-update / (re)create the shortcuts |
 
@@ -83,6 +84,21 @@ Ledger for pending time entries
 - Login uses the Keycloak client `time-cli-moritz` and receives the redirect on `http://localhost:1995/callback`. The token is kept in the macOS keychain (`eimer.time`; elsewhere `~/.config/eimer/time-token.json`, mode 0600) and refreshes automatically. Override with `EIMER_TIME_CLIENT_ID`, `EIMER_TIME_REDIRECT_URI`, `EIMER_TIME_API_URL`. A non-loopback redirect URI (e.g. the Raycast extension's client) falls back to pasting the redirect URL.
 - With one project in `.time.json` no alias is needed; with several pass `--project <alias>`.
 - The CI check, PR template and agent instructions for client repos live in [eimerreis/freelance-ops](https://github.com/eimerreis/freelance-ops).
+
+## Product updates
+
+`eimer product` turns Changesets changelogs into public update posts (one post per feature, like a changelog page). The CLI picks and validates; a coding agent writes the post and captures screenshots.
+
+```bash
+eimer product init      # writes .eimer/product.json + .eimer/product-update.prompt.md (commit both)
+eimer product status    # user-facing changes no post covers yet (--all includes ci/chore/...)
+eimer product update    # pick changes → draft post → agent prompt on the clipboard
+eimer product check     # validate posts (CI); --strict fails on unpublished drafts
+```
+
+`update` lists every changelog entry not yet covered, with commit type and platform tags (from the commit's files and the `platforms` globs). Internal commit types and products with `include: false` start unchecked; you can hide them for good (`<updatesDir>/.ignored.json`). It writes `<updatesDir>/<date>-<slug>.<lang>.md` with `status: draft` and copies the rendered prompt (`--print`, `--out <file>`, `--json` instead). Posts list the change ids they cover in `changes`, so nothing else tracks what is published. Scripted: `eimer product update --select abc1234,def5678 --title "Mac app" --media screenshot`.
+
+Config keys: `since`, `products` (`changelog`, `include`), `platforms` (tag → globs, `!` excludes), `internalTypes`, `updatesDir`, `mediaDir`, `mediaUrl`, `languages` (primary first), `capture` (platform → command, `{test}` = UI test), `promptTemplate`, `ignoreFile`. See [feature 009](docs/features/009-product-updates.md).
 
 ## Contexts
 

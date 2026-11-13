@@ -135,9 +135,20 @@ pub fn open_url(url: &str) -> Result<()> {
     run_text(cmd).map(|_| ()).context("Failed to open browser")
 }
 
-/// Copies text to the system clipboard using the platform tool
-/// (pbcopy, clip, wl-copy, xclip or xsel).
-pub fn copy_to_clipboard(text: &str) -> Result<()> {
+/// Where [`copy_to_clipboard`] put the text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Copied {
+    /// A clipboard tool (pbcopy, clip, wl-copy, xclip, xsel) took it.
+    Tool,
+    /// Sent to the terminal as an OSC 52 escape; the terminal sets the clipboard of the
+    /// machine it runs on (also over SSH). Terminals without OSC 52 support ignore it.
+    Terminal,
+}
+
+/// Copies text to the system clipboard using the platform tool (pbcopy, clip, wl-copy,
+/// xclip or xsel). Without one (headless server, SSH session) it falls back to OSC 52
+/// when stderr is a terminal.
+pub fn copy_to_clipboard(text: &str) -> Result<Copied> {
     let candidates: Vec<Vec<&str>> = if cfg!(target_os = "macos") {
         vec![vec!["pbcopy"]]
     } else if cfg!(windows) {
@@ -153,15 +164,53 @@ pub fn copy_to_clipboard(text: &str) -> Result<()> {
     let mut last_error = None;
     for candidate in &candidates {
         match run_with_stdin(candidate, text) {
-            Ok(()) => return Ok(()),
+            Ok(()) => return Ok(Copied::Tool),
             Err(err) if is_not_found(&err) => {}
             Err(err) => last_error = Some(err),
         }
     }
-    match last_error {
-        Some(err) => Err(err).context("Failed to copy to clipboard"),
-        None => Err(NoClipboard.into()),
+    if let Some(err) = last_error {
+        return Err(err).context("Failed to copy to clipboard");
     }
+    let mut stderr = std::io::stderr();
+    if !std::io::IsTerminal::is_terminal(&stderr) {
+        return Err(NoClipboard.into());
+    }
+    let tmux = std::env::var_os("TMUX").is_some();
+    stderr
+        .write_all(osc52(text, tmux).as_bytes())
+        .and_then(|()| stderr.flush())
+        .context("Failed to copy to clipboard")?;
+    Ok(Copied::Terminal)
+}
+
+/// OSC 52 "set clipboard" sequence; inside tmux wrapped in a passthrough sequence.
+fn osc52(text: &str, tmux: bool) -> String {
+    let sequence = format!("\x1b]52;c;{}\x07", base64(text.as_bytes()));
+    if tmux {
+        format!("\x1bPtmux;{}\x1b\\", sequence.replace('\x1b', "\x1b\x1b"))
+    } else {
+        sequence
+    }
+}
+
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |acc, (i, b)| acc | (u32::from(*b) << (16 - 8 * i)));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(ALPHABET[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }
 
 /// No clipboard tool is installed (headless machine, SSH session).
@@ -177,7 +226,10 @@ impl std::fmt::Display for NoClipboard {
         } else {
             "wl-copy, xclip or xsel"
         };
-        write!(f, "No clipboard tool found (install {tools})")
+        write!(
+            f,
+            "No clipboard tool found and no terminal to copy through (install {tools})"
+        )
     }
 }
 
@@ -188,4 +240,24 @@ fn is_not_found(err: &anyhow::Error) -> bool {
         e.downcast_ref::<std::io::Error>()
             .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
     })
+}
+
+#[cfg(test)]
+mod clipboard_tests {
+    use super::*;
+
+    #[test]
+    fn encodes_base64() {
+        assert_eq!(base64(b""), "");
+        assert_eq!(base64(b"f"), "Zg==");
+        assert_eq!(base64(b"fo"), "Zm8=");
+        assert_eq!(base64(b"foo"), "Zm9v");
+        assert_eq!(base64("Größe".as_bytes()), "R3LDtsOfZQ==");
+    }
+
+    #[test]
+    fn builds_osc52() {
+        assert_eq!(osc52("hi", false), "\x1b]52;c;aGk=\x07");
+        assert_eq!(osc52("hi", true), "\x1bPtmux;\x1b\x1b]52;c;aGk=\x07\x1b\\");
+    }
 }
