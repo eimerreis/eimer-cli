@@ -16,6 +16,7 @@ mod hook;
 mod loopback;
 mod pending;
 mod repo;
+mod report;
 mod store;
 mod suggest;
 
@@ -61,6 +62,8 @@ enum TimeCommand {
     None(book::NoneArgs),
     /// Check the PR adds a time entry or has a Time line (exit 1 otherwise)
     Status(book::StatusArgs),
+    /// Hours per project: this week, not yet invoiced, and budget progress
+    Report(report::ReportArgs),
 }
 
 pub fn run(args: TimeArgs) -> Result<()> {
@@ -85,5 +88,6 @@ pub fn run(args: TimeArgs) -> Result<()> {
         TimeCommand::Book(a) => book::book(a),
         TimeCommand::None(a) => book::none(a),
         TimeCommand::Status(a) => book::status(a),
+        TimeCommand::Report(a) => report::report(a),
     }
 }
