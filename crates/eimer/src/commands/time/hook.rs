@@ -154,7 +154,7 @@ fn pre_push_inner(stdin: &str) -> Result<Option<String>> {
     {
         return Ok(None);
     }
-    record(true)
+    record(true, &[])
 }
 
 /// Whether the push updates `local_ref` (an empty stdin, e.g. a manual run, counts).
@@ -274,7 +274,7 @@ pub struct Plan {
     pub changes: bool,
 }
 
-pub fn plan() -> Result<Plan> {
+pub fn plan(include: &[PathBuf]) -> Result<Plan> {
     let config = repo::load_config()?;
     if config.projects.len() > 1 {
         return Err(anyhow::anyhow!("This repo bills to several time projects"))
@@ -282,7 +282,7 @@ pub fn plan() -> Result<Plan> {
     }
     let root = repo::root()?;
     let base = merge_base()?;
-    let identity = RepoIdentity::current()?;
+    let identity = RepoIdentity::current()?.including(include)?;
     let now = chrono::Local::now().timestamp();
     let since = activity::covered_until(&identity)?.unwrap_or_else(super::book::start_of_today);
     let focus = activity::focus_seconds(&identity, since, now, DEFAULT_GAP_SECS)?;
@@ -328,8 +328,8 @@ pub fn plan() -> Result<Plan> {
 
 /// Records the focus since the last window into the branch's entry (creating it on
 /// the first run). Returns a message when the entry changed (and was committed).
-pub fn record(commit: bool) -> Result<Option<String>> {
-    let plan = plan()?;
+pub fn record(commit: bool, include: &[PathBuf]) -> Result<Option<String>> {
+    let plan = plan(include)?;
     if !plan.changes {
         return Ok(None);
     }
@@ -386,7 +386,7 @@ struct PreviewJson<'a> {
 
 /// Shows what the next push would record, without writing anything.
 pub fn preview(json: bool) -> Result<()> {
-    let plan = plan()?;
+    let plan = plan(&[])?;
     let relative = |p: &Path| {
         p.strip_prefix(&plan.root)
             .unwrap_or(p)

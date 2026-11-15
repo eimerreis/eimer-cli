@@ -81,6 +81,52 @@ where
     run_text(cmd).ok()
 }
 
+/// Variables through which git locates a repository (`git rev-parse --local-env-vars`).
+/// Git exports some of them to hooks, so a hook's `git -C <dir>` would otherwise answer
+/// for the hook's repository instead of `dir`.
+const GIT_REPO_ENV: &[&str] = &[
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_DIR",
+    "GIT_GRAFT_FILE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PREFIX",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_SHALLOW_FILE",
+    "GIT_WORK_TREE",
+];
+
+/// Runs `git -C <dir> <args>` against the repository at `dir`, ignoring the repository
+/// variables of the calling process. Returns stdout, or `None` on failure.
+pub fn try_git_in<I, S>(dir: &std::path::Path, args: I) -> Option<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut cmd = vec![
+        "git".to_string(),
+        "-C".to_string(),
+        dir.to_string_lossy().into_owned(),
+    ];
+    cmd.extend(to_vec(args));
+    let mut command = command(&cmd).ok()?;
+    for var in GIT_REPO_ENV {
+        command.env_remove(var);
+    }
+    let output = command
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
 /// Runs a command with inherited stdio (interactive tools, streaming output). Returns the exit code.
 pub fn run_inherit<I, S>(cmd: I) -> Result<i32>
 where

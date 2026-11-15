@@ -49,6 +49,9 @@ pub struct SuggestArgs {
     /// Prompts closer than this count as continuous focus, e.g. 10m
     #[arg(long, default_value = "10m")]
     gap: String,
+    /// Also count sessions started in this folder, e.g. a scratch folder (repeatable)
+    #[arg(long, value_name = "DIR")]
+    include: Vec<std::path::PathBuf>,
     /// Print machine-readable JSON
     #[arg(long, short = 'j')]
     json: bool,
@@ -65,6 +68,9 @@ pub struct AddArgs {
     /// With --auto: also commit the entry
     #[arg(long, requires = "auto")]
     commit: bool,
+    /// With --auto: also count sessions started in this folder, e.g. a scratch folder (repeatable)
+    #[arg(long, value_name = "DIR", requires = "auto")]
+    include: Vec<std::path::PathBuf>,
     /// What was done; merged into the time record description on booking
     #[arg(long, short = 'd')]
     description: Option<String>,
@@ -176,7 +182,7 @@ struct DayActivity {
 }
 
 pub fn suggest(args: SuggestArgs) -> Result<()> {
-    let repo = RepoIdentity::current()?;
+    let repo = RepoIdentity::current()?.including(&args.include)?;
     let gap = (duration::parse(&args.gap)? * 3600.0).round() as i64;
     let since = match &args.since {
         Some(value) => parse_since(value)?,
@@ -252,7 +258,7 @@ pub fn suggest(args: SuggestArgs) -> Result<()> {
 
 pub fn add(args: AddArgs) -> Result<()> {
     let Some(duration_arg) = args.duration else {
-        match super::hook::record(args.commit)? {
+        match super::hook::record(args.commit, &args.include)? {
             Some(message) => ui::print_success(&message),
             None => ui::print_info("No new focus time since the last entry", None),
         }

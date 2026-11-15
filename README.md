@@ -7,8 +7,7 @@ Developer CLI for Azure DevOps and GitHub workflows: tasks, pull requests, pipel
 Linux / macOS:
 
 ```sh
-curl - **pre-push hook:** on push it records the focus time since the last window into the branch's entry (`.time/*.md`, created on the first push with the branch's commit subjects as description), commits it as `chore(time): record <hours>` and stops the push once; push again to include it. Later pushes add to the same entry, but only stop the push when the rounded hours change. Hours you edited by hand grow by new focus only. Skip once with `EIMER_TIME_SKIP=1`; errors never block a push (the CI check still requires an entry). Repos with several projects in `.time.json` need `eimer time add --project`.
--fsSL https://raw.githubusercontent.com/eimerreis/eimer-cli/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/eimerreis/eimer-cli/main/install.sh | sh
 ```
 
 Windows (PowerShell):
@@ -59,9 +58,10 @@ eimer time projects               # find the project id
 eimer time init <projectId>       # writes .time.json in the repo (commit it), installs the pre-push hook
 eimer time hook install           # pre-push hook for other clones (shared by their worktrees)
 eimer time suggest                # focus time from your prompts since the last `add`
+eimer time suggest --include <dir> # also count sessions started in <dir>, e.g. a scratch folder
 eimer time add 1.5h -d "what"     # writes .time/<date>-<id>.md (commit it with the PR)
 eimer time preview [--json]       # what the next push would record for this branch (writes nothing)
-eimer time add --auto [--commit]  # what the hook does: record focus into this branch's entry
+eimer time add --auto [--commit] [--include <dir>]  # what the hook does: record focus into this branch's entry
 eimer time none "internal tooling" # PR body: Time: none (internal tooling)
 eimer time status                 # exit 1 when the PR has neither
 eimer time pending                # open entries and the last booking
@@ -81,6 +81,8 @@ Ledger for pending time entries
 ```
 
 - `suggest` reads local agent transcripts (Claude Code in `~/.claude/projects`, Codex in `~/.codex/sessions`; T3 Code runs both) whose working directory belongs to this repo, including its worktrees. It suggests **focus time**: from one of your prompts to the next when they are at most `--gap` apart (default 10m), plus 2 minutes before every prompt. When the agent works alone for longer, only your return counts. Prompts sent by tools (task notifications, PR updates, subagents, title generation) are ignored, and parallel sessions count once. It also shows how long the agent was active. The window starts where the last `add` ended (kept per repo in `~/.config/eimer/time-activity.json`), else at midnight; override with `--since`. Time outside the agent is not seen; the user decides the recorded duration.
+- `--include <dir>` (repeatable, on `suggest` and `add --auto`) also counts sessions whose working directory is `<dir>` or below it. Use it when work started in a scratch folder and belongs to this repo after all, e.g. `eimer time suggest --include ~/.t3/scratch/<name> --since 2026-11-13`, then `eimer time add <duration>`.
+- **pre-push hook:** on push it records the focus time since the last window into the branch's entry (`.time/*.md`, created on the first push with the branch's commit subjects as description), commits it as `chore(time): record <hours>` and stops the push once; push again to include it. Later pushes add to the same entry, but only stop the push when the rounded hours change. Hours you edited by hand grow by new focus only. Skip once with `EIMER_TIME_SKIP=1`; errors never block a push (the CI check still requires an entry). Repos with several projects in `.time.json` need `eimer time add --project`.
 - `book` merges the descriptions of entries of the same project and day into one record (`<repo>: a; b`), deletes the booked entries and appends a section to `TIME.md`. Commit both in a PR; a PR that only touches `.time/`, `TIME.md` and `.changeset/` passes the check.
 - Login uses the Keycloak client `time-cli-moritz` and receives the redirect on `http://localhost:1995/callback`. The token is kept in the macOS keychain (`eimer.time`; elsewhere `~/.config/eimer/time-token.json`, mode 0600) and refreshes automatically. Override with `EIMER_TIME_CLIENT_ID`, `EIMER_TIME_REDIRECT_URI`, `EIMER_TIME_API_URL`. A non-loopback redirect URI (e.g. the Raycast extension's client) falls back to pasting the redirect URL.
 - With one project in `.time.json` no alias is needed; with several pass `--project <alias>`.
