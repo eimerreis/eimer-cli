@@ -16,7 +16,7 @@ First consumer: `volleyball-team-app` (website `marketing/website`, products `vo
 ## Decisions
 - **One post per run = one feature.** Like Framer, posts are about a feature, not a version; several posts can share a date. Fixes join the next feature post under "Also in this release", or a periodic "Fixes and improvements" post.
 - **Filter by commit type only.** No new changeset convention; the interactive pick is the real filter. Revisit (e.g. a `user-facing:` line in the changeset body) once updates run unattended.
-- **State lives in the update files.** A post's `changes` list holds the change ids (commit hashes) it covers; no separate cursor. Ids, not versions, because one version can hold several features. Dismissed entries go to an ignore file. `since` hides history from before the tool was adopted.
+- **State lives in the update files.** A post's `changes` list holds the change ids (commit hashes) it covers; no separate cursor. Ids, not versions, because one version can hold several features. Dismissed entries go to an ignore file. `since` hides history from before the tool was adopted. Posts dated before `since` (a retrospective of older features) list plain commit hashes, since no changelog records them.
 - **Prompt template lives in the repo**, with a built-in default in the CLI.
 - **Media default is a real capture.** Stageshow (faux animated UI) only for headline features where motion is the point; app-store-screenshots only when the store listing should be refreshed too.
 
@@ -101,7 +101,7 @@ One file per language (`<slug>.en.md`, `<slug>.de.md`) sharing the front matter 
 - Save media to `<mediaDir>/<slug>/`, set `status: published`, run `eimer product check` and the website build, add a Website changeset, open a PR.
 
 ## `product check`
-Validates every update file: file name, configured language, front matter (title, date matching the file name, known platforms, `changes` ids present in the changelogs, status), and for published posts the media block (`kind`; `src`/`dark` under `mediaUrl` with existing files and `alt` for image/video; an existing `component` for demo). Every published post must exist in every language. Also checks the repo prompt template for unknown placeholders. Drafts are warnings (`--strict`: errors). Exit 1 on any error; `--json` for tooling. The website's CI runs it.
+Validates every update file: file name, configured language, front matter (title, date matching the file name, known platforms, `changes` ids present in the changelogs, or any commit hash for posts dated before `since`, status), and for published posts the media block (`kind`; `src`/`dark` under `mediaUrl` with existing files and `alt` for image/video; an existing `component` for demo). Every published post must exist in every language. Also checks the repo prompt template for unknown placeholders. Drafts are warnings (`--strict`: errors). Exit 1 on any error; `--json` for tooling. The website's CI runs it.
 
 ## Implementation Plan
 - [x] Config: `.eimer/product.json` schema + loader (walk up from cwd), `product init` with product detection from `.changeset/config.json` and package changelogs.
