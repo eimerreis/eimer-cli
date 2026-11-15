@@ -12,12 +12,15 @@ use std::time::SystemTime;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::core::process::try_run_text;
+use crate::core::process::try_git_in;
 
 /// The repo whose activity is measured: all its worktrees share one git common dir.
 pub struct RepoIdentity {
     common_dir: PathBuf,
     name: String,
+    /// Extra folders whose sessions count for this repo, e.g. a scratch folder where
+    /// work started before it moved into the repo.
+    included: Vec<PathBuf>,
 }
 
 impl RepoIdentity {
@@ -25,7 +28,21 @@ impl RepoIdentity {
         let common_dir =
             git_common_dir(Path::new(".")).context("Failed to find the git repository")?;
         let name = repo_name(&common_dir);
-        Ok(Self { common_dir, name })
+        Ok(Self {
+            common_dir,
+            name,
+            included: Vec::new(),
+        })
+    }
+
+    /// Also counts sessions started in (or below) these folders.
+    pub fn including(mut self, dirs: &[PathBuf]) -> Result<Self> {
+        for dir in dirs {
+            let dir = std::fs::canonicalize(dir)
+                .with_context(|| format!("Failed to find --include folder {}", dir.display()))?;
+            self.included.push(dir);
+        }
+        Ok(self)
     }
 
     /// Key for per-repo local state.
@@ -43,6 +60,13 @@ impl RepoIdentity {
         if let Some(&hit) = cache.get(cwd) {
             return hit;
         }
+        // Compare canonical paths: `--include` is canonicalized, a recorded cwd may
+        // not be (symlinked temp dirs on macOS, `\\?\` prefixes on Windows).
+        let canonical = std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
+        if self.included.iter().any(|dir| canonical.starts_with(dir)) {
+            cache.insert(cwd.to_path_buf(), true);
+            return true;
+        }
         let hit = match git_common_dir(cwd) {
             Some(dir) => dir == self.common_dir,
             None => is_t3_worktree_of(cwd, &self.name),
@@ -56,14 +80,10 @@ fn git_common_dir(dir: &Path) -> Option<PathBuf> {
     if !dir.is_dir() {
         return None;
     }
-    let raw = try_run_text([
-        "git",
-        "-C",
-        &dir.to_string_lossy(),
-        "rev-parse",
-        "--path-format=absolute",
-        "--git-common-dir",
-    ])?;
+    let raw = try_git_in(
+        dir,
+        ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )?;
     std::fs::canonicalize(raw.trim()).ok()
 }
 
@@ -537,6 +557,7 @@ mod tests {
         let repo = RepoIdentity {
             common_dir: PathBuf::from("/nonexistent/.git"),
             name: "demo".into(),
+            included: Vec::new(),
         };
         let claude = dir.path().join("c.jsonl");
         std::fs::write(
