@@ -13,7 +13,8 @@ struct Fixture {
 /// A home with a repo and a scratch folder (not a repo) next to it.
 fn fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let root = dir.path().canonicalize().unwrap();
+    // Not canonicalized: agents record the path as the shell shows it.
+    let root = dir.path().to_path_buf();
     let home = root.join("home");
     let repo = root.join("repo");
     let scratch = root.join("scratch");
@@ -43,11 +44,13 @@ fn transcript(home: &Path, name: &str, cwd: &Path) {
     let dir = home.join(".claude/projects").join(name);
     std::fs::create_dir_all(&dir).unwrap();
     let line = |minutes: i64| {
-        format!(
-            "{{\"timestamp\":\"{}\",\"type\":\"user\",\"cwd\":\"{}\",\"message\":{{\"content\":\"go on\"}}}}\n",
-            minutes_ago(minutes),
-            cwd.display()
-        )
+        let line = serde_json::json!({
+            "timestamp": minutes_ago(minutes),
+            "type": "user",
+            "cwd": cwd,
+            "message": {"content": "go on"},
+        });
+        format!("{line}\n")
     };
     std::fs::write(dir.join("s.jsonl"), line(30) + &line(25)).unwrap();
 }

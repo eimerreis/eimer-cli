@@ -60,7 +60,10 @@ impl RepoIdentity {
         if let Some(&hit) = cache.get(cwd) {
             return hit;
         }
-        if self.included.iter().any(|dir| cwd.starts_with(dir)) {
+        // Compare canonical paths: `--include` is canonicalized, a recorded cwd may
+        // not be (symlinked temp dirs on macOS, `\\?\` prefixes on Windows).
+        let canonical = std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
+        if self.included.iter().any(|dir| canonical.starts_with(dir)) {
             cache.insert(cwd.to_path_buf(), true);
             return true;
         }
