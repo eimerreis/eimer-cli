@@ -1,5 +1,11 @@
 # eimer
 
+## 0.6.1
+
+### Patch Changes
+
+- 5497f62: `eimer product check` accepts plain commit hashes in posts dated before `since`, so a retrospective of features from before the changelogs passes.
+
 ## 0.6.0
 
 ### Minor Changes
