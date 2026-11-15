@@ -184,8 +184,22 @@ fn check_post(
     match doc.list("changes") {
         Some([]) | None => error("`changes` must list at least one change id".into()),
         Some(ids) => {
-            for id in ids.iter().filter(|id| !known_ids.contains(*id)) {
-                error(format!("change '{id}' is not in any configured changelog"));
+            // Posts dated before `since` look back on history no changelog records;
+            // their ids are plain commit hashes.
+            let backfill = matches!(
+                (doc.str("date"), &repo.config.since),
+                (Some(date), Some(since)) if is_iso_date(date) && date < since.as_str()
+            );
+            for id in ids {
+                if backfill {
+                    if !is_commit_id(id) {
+                        error(format!(
+                            "change '{id}' must be a commit hash (7–40 hex characters)"
+                        ));
+                    }
+                } else if !known_ids.contains(id) {
+                    error(format!("change '{id}' is not in any configured changelog"));
+                }
             }
         }
     }
@@ -197,6 +211,13 @@ fn check_post(
         check_media(repo, doc, &mut error);
     }
     out
+}
+
+fn is_commit_id(id: &str) -> bool {
+    (7..=40).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 fn check_media(repo: &Repo, doc: &Document, error: &mut impl FnMut(String)) {
@@ -347,6 +368,26 @@ Body
         );
         assert!(found.iter().any(|m| m.contains("file name must be")));
         assert!(found.iter().any(|m| m.contains("missing translation")));
+    }
+
+    #[test]
+    fn posts_before_since_take_commit_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut repo = setup(dir.path());
+        repo.config.since = Some("2026-11-12".into());
+        std::fs::create_dir_all(dir.path().join("updates")).unwrap();
+        let old = GOOD
+            .replace("2026-11-12", "2026-10-16")
+            .replace("[abc1234]", "[d0b350d3, not-a-hash]");
+        std::fs::write(dir.path().join("updates/2026-10-16-mac.en.md"), &old).unwrap();
+        std::fs::write(dir.path().join("updates/2026-10-16-mac.de.md"), &old).unwrap();
+        let found = messages(&check(&repo, false).unwrap());
+        assert!(!found.iter().any(|m| m.contains("d0b350d3")));
+        assert!(
+            found
+                .iter()
+                .any(|m| m.contains("change 'not-a-hash' must be a commit hash"))
+        );
     }
 
     #[test]
