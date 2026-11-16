@@ -42,6 +42,7 @@ Requirements: [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cl
 | `pipeline runs\|list\|show\|open\|trigger\|watch` | Azure DevOps pipelines |
 | `release changelog\|approve\|configure` | Release changelogs (Teams posting) and approvals |
 | `eimer time login\|projects\|init\|suggest\|add\|none\|status\|pending\|book\|report` | Record work to codeunity time ([below](#time-tracking)) |
+| `eimer secrets init\|recipients\|edit\|get\|decrypt` | Runtime secrets as SOPS-encrypted files in the repo ([below](#runtime-secrets)) |
 | `eimer product init\|status\|update\|check` | Public update posts from Changesets changelogs ([below](#product-updates)) |
 | `eimer configure` | Shared defaults in `~/.config/eimer/config.json` |
 | `eimer upgrade` / `eimer link` | Self-update / (re)create the shortcuts |
@@ -90,6 +91,22 @@ Ledger for pending time entries
 - Login uses the Keycloak client `time-cli-moritz` and receives the redirect on `http://localhost:1995/callback`. The token is kept in the macOS keychain (`eimer.time`; elsewhere `~/.config/eimer/time-token.json`, mode 0600) and refreshes automatically. Override with `EIMER_TIME_CLIENT_ID`, `EIMER_TIME_REDIRECT_URI`, `EIMER_TIME_API_URL`. A non-loopback redirect URI (e.g. the Raycast extension's client) falls back to pasting the redirect URL.
 - With one project in `.time.json` no alias is needed; with several pass `--project <alias>`.
 - The CI check, PR template and agent instructions for client repos live in [eimerreis/freelance-ops](https://github.com/eimerreis/freelance-ops).
+
+## Runtime secrets
+
+`eimer secrets` keeps an application's runtime secrets in the repo as SOPS/age-encrypted dotenv files, `secrets/<environment>.enc.env` ([devops ADR-0019](https://github.com/eimerreis/devops/blob/main/docs/adr/0019-keep-runtime-secrets-sops-encrypted-in-caller-repositories.md)). `secrets/recipients.json` names who may decrypt which environment; `.sops.yaml` is generated from it. Needs `sops` and `age` on PATH; adding a host by name also needs `op`.
+
+```bash
+eimer secrets init                                   # operator key from the local SOPS age key file; production + development
+eimer secrets edit development                       # $EDITOR via sops; creates the file on first use
+eimer secrets recipients add eimerdev --env development   # key from the 1Password item "eimerdev" (field "age public key"), or --key age1...
+eimer secrets recipients list [--json]
+eimer secrets recipients remove eimerdev             # re-encrypts, then reminds you to rotate what the host could read
+eimer secrets get production DATABASE_PASSWORD
+eimer secrets decrypt production -o .env             # 0600; refuses paths in the repo that git does not ignore
+```
+
+Development hosts, where agents run, should never be recipients of production.
 
 ## Product updates
 
