@@ -1,5 +1,11 @@
 # eimer
 
+## 0.9.0
+
+### Minor Changes
+
+- f0627f5: Add `eimer secrets` for runtime secrets as SOPS/age-encrypted dotenv files in the repo: `init`, `recipients add|remove|list` (host keys from 1Password), `edit`, `get` and `decrypt`.
+
 ## 0.8.0
 
 ### Minor Changes
