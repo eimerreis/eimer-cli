@@ -1,5 +1,12 @@
 # eimer
 
+## 0.12.0
+
+### Minor Changes
+
+- 5bf1591: `eimer time invoiced --through <date> [-n <number>]` records an invoice in the repo's `.time.json`. Inside that repo, `eimer time report --project` accepts the alias and starts the day after the last invoice unless `--from` is given; `eimer time pending` shows the last invoice.
+- 5bf1591: `eimer time report --project` shows records without the invoiced flag ("Abgr.") in time as "nicht abgerechnet": they stay in the list, greyed out with a small "nicht abgerechnet" badge, and count apart from the billed on-site and remote totals. The `time-report` template takes `billed: false` per entry.
+
 ## 0.11.0
 
 ### Minor Changes
