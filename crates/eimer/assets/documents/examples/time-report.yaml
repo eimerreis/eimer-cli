@@ -14,7 +14,7 @@ entries:
       Einrichtung Microsoft OneDrive
       Kontakt mit Microsoft-Support wegen Lizenz
       Kündigung eines bestehenden Abonnements
-  - { date: 2026-08-28, location: remote, hours: 2, description: Recherche zur Sicherung der Verzeichnisse }
+  - { date: 2026-08-28, location: remote, hours: 2, description: Recherche zur Sicherung der Verzeichnisse, billed: false }
   - { date: 2026-09-22, location: remote, hours: 4, description: Eigenes Sicherungsskript für die Partitionstabelle }
   - { date: 2026-10-05, location: remote, hours: 4, description: Backup der Daten nach Microsoft Azure }
   - { date: 2026-11-02, location: remote, hours: 3, description: Übertragung der Sicherung von Azure nach OneDrive via rclone }

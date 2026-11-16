@@ -1,6 +1,7 @@
 //! `eimer time report --project <id|name>`: the time report document (Zeitbuchungen) for one
 //! project. Writes the data as YAML in the `time-report` format and renders it to PDF with
-//! `eimer doc` (see `commands/doc`).
+//! `eimer doc` (see `commands/doc`). Records without the invoiced flag ("Abgr.") in time count as
+//! not billed: the report lists them but keeps them out of the billed totals.
 
 use std::path::{Path, PathBuf};
 
@@ -42,6 +43,8 @@ pub struct Entry {
     pub location: &'static str,
     pub hours: f64,
     pub description: String,
+    /// Whether the client is charged for the entry: the record's invoiced flag ("Abgr.") in time.
+    pub billed: bool,
 }
 
 pub fn run(request: DocumentRequest) -> Result<()> {
@@ -86,11 +89,18 @@ pub fn run(request: DocumentRequest) -> Result<()> {
         yaml.display()
     ))?;
     let hours: f64 = document.entries.iter().map(|e| e.hours).sum();
+    let unbilled: f64 = document
+        .entries
+        .iter()
+        .filter(|e| !e.billed)
+        .map(|e| e.hours)
+        .sum();
     ui::print_success(&format!(
-        "{} ({} entries, {} h)",
+        "{} ({} entries, {} h, {} h not billed)",
         pdf.display(),
         document.entries.len(),
-        round(hours)
+        round(hours),
+        round(unbilled)
     ));
     Ok(())
 }
@@ -180,6 +190,7 @@ pub fn build_document(
                 location: if r.on_site { "onsite" } else { "remote" },
                 hours: round(r.duration as f64 / 100.0),
                 description: r.description.trim().to_string(),
+                billed: r.invoiced,
             })
             .collect(),
     })
@@ -216,6 +227,9 @@ pub fn to_yaml(document: &TimeReportDocument) -> String {
             entry.hours,
             quote(&entry.description)
         ));
+        if !entry.billed {
+            out.push_str("    billed: false\n");
+        }
     }
     out
 }
@@ -264,7 +278,7 @@ mod tests {
             description: description.into(),
             duration,
             date: date.into(),
-            invoiced: false,
+            invoiced: true,
             on_site,
         }
     }
@@ -329,13 +343,15 @@ mod tests {
                     date: "2026-03-26".into(),
                     location: "remote",
                     hours: 0.5,
-                    description: "TeamViewer-Sitzung".into()
+                    description: "TeamViewer-Sitzung".into(),
+                    billed: true,
                 },
                 Entry {
                     date: "2026-07-30".into(),
                     location: "onsite",
                     hours: 1.0,
-                    description: "Einrichtung OneDrive\nLizenz klären".into()
+                    description: "Einrichtung OneDrive\nLizenz klären".into(),
+                    billed: true,
                 },
             ]
         );
@@ -378,11 +394,48 @@ mod tests {
                 location: "onsite",
                 hours: 1.5,
                 description: "Einrichtung \"OneDrive\"\nLizenz".into(),
+                billed: true,
             }],
         };
         assert_eq!(
             to_yaml(&doc),
             "type: time-report\nclient: \"Beispiel GmbH\"\nproject: \"IT-Betreuung\"\nperiod: { from: 2026-03-26, to: 2026-07-30 }\nentries:\n  - date: 2026-07-30\n    location: onsite\n    hours: 1.5\n    description: \"Einrichtung \\\"OneDrive\\\"\\nLizenz\"\n"
+        );
+    }
+
+    #[test]
+    fn build_document_marks_records_without_the_invoiced_flag_as_not_billed() {
+        let mut goodwill = record(2, "2026-03-27", 100, false, "Kulanz");
+        goodwill.invoiced = false;
+        let records = [record(1, "2026-03-26", 50, false, "Abgerechnet"), goodwill];
+        let doc = build_document(&project(7, "P"), None, &records, None, None).unwrap();
+        assert_eq!(
+            doc.entries.iter().map(|e| e.billed).collect::<Vec<_>>(),
+            vec![true, false]
+        );
+    }
+
+    #[test]
+    fn to_yaml_marks_only_unbilled_entries() {
+        let entry = |billed| Entry {
+            date: "2026-07-30".into(),
+            location: "remote",
+            hours: 1.0,
+            description: "x".into(),
+            billed,
+        };
+        let doc = TimeReportDocument {
+            client: "C".into(),
+            project: "C".into(),
+            period: Period {
+                from: "2026-07-30".into(),
+                to: "2026-07-30".into(),
+            },
+            entries: vec![entry(true), entry(false)],
+        };
+        assert_eq!(
+            to_yaml(&doc),
+            "type: time-report\nclient: \"C\"\nproject: \"C\"\nperiod: { from: 2026-07-30, to: 2026-07-30 }\nentries:\n  - date: 2026-07-30\n    location: remote\n    hours: 1\n    description: \"x\"\n  - date: 2026-07-30\n    location: remote\n    hours: 1\n    description: \"x\"\n    billed: false\n"
         );
     }
 

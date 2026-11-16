@@ -72,7 +72,7 @@ eimer time report [--from --to] [--json]  # hours per project: window (default t
 eimer time report --project <id|name> [--from --to] [-o file.pdf]  # time report PDF (Zeitbuchungen) for a client
 ```
 
-`eimer time report --project` writes the project's records in the window (default: all of them) as `time-report` YAML and renders it with [`eimer doc`](#documents). The YAML stays next to the PDF, so you can fix wording and re-render with `eimer doc render <file>.yaml`. With `--json` it prints the data instead. The client name comes from the project's billing customer, falling back to the project name.
+`eimer time report --project` writes the project's records in the window (default: all of them) as `time-report` YAML and renders it with [`eimer doc`](#documents). The YAML stays next to the PDF, so you can fix wording and re-render with `eimer doc render <file>.yaml`. With `--json` it prints the data instead. The client name comes from the project's billing customer, falling back to the project name. Only records with the invoiced flag ("Abgr.") set in time count as billed: the report still lists the others, marks them "nicht abgerechnet" and shows their hours apart from the billed on-site and remote totals. In the YAML such an entry carries `billed: false`.
 
 Entry file:
 
