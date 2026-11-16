@@ -47,11 +47,23 @@ cd packages/release && bun run typecheck && bun test
 - **Command structure**: one folder per command group under `src/commands/<group>/`, one file per command plus shared helpers; each group exports `<Group>Args` and `run`
 - **Shared code**: `src/core/` (config, context, azure, process, ui, prompt, http, error). Prefer extending core over per-command duplicates.
 - **Subprocesses**: always via `core::process` (no shell); `az` scoping via `core::azure::AzScope`
+- **External tools**: eimer installs the tools it needs; users never install them by hand. See below.
 - **Errors**: `anyhow` with `.context("Failed to <verb> ...")`; attach user hints with `core::error::HintExt::hint`
 - **Output**: human output via `core::ui`; `--json` prints raw JSON with stable field names; no spinners with `--json`
 - **Tests**: `#[cfg(test)]` unit tests next to the code; smoke-test commands against fake `az`/`gh`/`git` scripts on `PATH`
 - **File size**: keep files under ~500 LOC; split as needed
 - **Commits**: Conventional Commits (`feat|fix|refactor|build|ci|chore|docs|style|perf|test`)
+
+## External tools
+
+eimer is self-contained: a command that needs an external tool installs it on first use.
+
+- Standalone binaries (e.g. `typst`) go through `core::tools`: add a `Tool` with a pinned version, the release URL and the SHA-256 of every platform's asset (`gh api repos/<owner>/<repo>/releases/tags/<tag> --jq '.assets[] | "\(.name) \(.digest)"'`). `tools::ensure` returns the binary.
+- Installs land in `~/.local/share/eimer/tools/<name>/<version>/` (Windows: `%LOCALAPPDATA%\eimer\data\tools`), only after the checksum matches. Never system-wide, never via `brew`, `npm`, `curl | sh` or another installer.
+- A tool already on `PATH` is used when it meets `min_version`; otherwise eimer installs its pinned version.
+- Cover every target in `release-eimer.yml`. Bump a pin as one change: version plus all hashes.
+- Tools that cannot ship as one binary (`az` with the azure-devops extension) or need a login (`gh auth login`): check up front and fail with a hint that names the exact install or login command.
+- Prefer embedding data the tool needs (templates, fonts) in the eimer binary over separate downloads.
 
 ## Coding Conventions (TypeScript, packages/release)
 - Bun only (`bun install`, `bun run`, `bun test`); never npm

@@ -5,4 +5,5 @@ pub mod error;
 pub mod http;
 pub mod process;
 pub mod prompt;
+pub mod tools;
 pub mod ui;

@@ -74,6 +74,28 @@ pub fn config_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("config.json"))
 }
 
+/// `$XDG_CACHE_HOME/eimer`, `%LOCALAPPDATA%\eimer\cache` on Windows, else `~/.cache/eimer`.
+pub fn cache_dir() -> Result<PathBuf> {
+    user_dir("XDG_CACHE_HOME", ".cache", "cache")
+}
+
+/// `$XDG_DATA_HOME/eimer`, `%LOCALAPPDATA%\eimer\data` on Windows, else `~/.local/share/eimer`.
+pub fn data_dir() -> Result<PathBuf> {
+    user_dir("XDG_DATA_HOME", ".local/share", "data")
+}
+
+fn user_dir(xdg_var: &str, home_relative: &str, windows_leaf: &str) -> Result<PathBuf> {
+    if let Some(base) = std::env::var_os(xdg_var).filter(|v| !v.is_empty()) {
+        return Ok(PathBuf::from(base).join("eimer"));
+    }
+    if cfg!(windows)
+        && let Some(base) = std::env::var_os("LOCALAPPDATA").filter(|v| !v.is_empty())
+    {
+        return Ok(PathBuf::from(base).join("eimer").join(windows_leaf));
+    }
+    Ok(home_dir()?.join(home_relative).join("eimer"))
+}
+
 /// Replaces the home directory prefix with `~` for display.
 pub fn with_home_path(path: &std::path::Path) -> String {
     let display = path.display().to_string();

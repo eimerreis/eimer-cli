@@ -6,7 +6,7 @@ use anyhow::{Context, Result, anyhow, bail};
 
 use super::assets;
 use crate::core::error::HintExt;
-use crate::core::{config, process};
+use crate::core::{config, process, tools};
 
 pub const TYPES: &[&str] = &[
     "invoice",
@@ -40,10 +40,10 @@ pub fn render(options: &RenderOptions) -> Result<PathBuf> {
     }
     let assets = assets::unpack()?;
     let output = output_path(options);
-    let args = typst_args(kind, options, &sender, &output, &assets)?;
+    let typst = tools::ensure(&tools::TYPST, false)?;
+    let args = typst_args(&typst, kind, options, &sender, &output, &assets)?;
 
-    let code = process::run_inherit(&args)
-        .hint("Install Typst 0.15+: https://github.com/typst/typst#installation")?;
+    let code = process::run_inherit(&args)?;
     if code != 0 {
         bail!("typst exited with {code}");
     }
@@ -93,6 +93,7 @@ fn output_path(options: &RenderOptions) -> PathBuf {
 /// `typst compile|watch` arguments. The project root is the filesystem root, so the data and
 /// sender files can live anywhere; Typst addresses them as root-relative paths.
 fn typst_args(
+    typst: &Path,
     kind: &str,
     options: &RenderOptions,
     sender: &Path,
@@ -102,7 +103,7 @@ fn typst_args(
     let data = absolute(options.data)?;
     let root = fs_root(&data);
     let mut args = vec![
-        "typst".to_string(),
+        typst.display().to_string(),
         if options.watch { "watch" } else { "compile" }.to_string(),
         "--root".to_string(),
         root.display().to_string(),
@@ -204,6 +205,7 @@ mod tests {
             png: false,
         };
         let args = typst_args(
+            Path::new("typst"),
             "invoice",
             &options,
             Path::new("/cfg/sender.yaml"),
