@@ -16,6 +16,13 @@
 #let all-hours = total + unbilled
 #let has-unbilled = unbilled > decimal("0")
 #let unbilled-fill = rule-color
+#let unbilled-badge = box(
+  stroke: 0.5pt + muted,
+  radius: 3pt,
+  inset: (x: 1.3mm, y: 0.6mm),
+  baseline: 0.6mm,
+  text(size: 6pt, weight: "bold", fill: muted)[nicht abgerechnet],
+)
 
 #let pill(location) = {
   let on = location == "onsite"
@@ -97,13 +104,13 @@
       pill(e.at("location", default: "remote")),
       {
         set par(leading: 0.55em)
+        set text(fill: muted) if not is-billed(e)
         str(e.description).trim().split("\n").map(line => markup(line)).join(linebreak())
       },
       if is-billed(e) {
         text(weight: "bold")[#num(e.hours) Std.]
       } else {
-        set text(fill: muted)
-        stack(dir: ttb, spacing: 1.2mm, strike[#num(e.hours) Std.], text(size: 7pt)[nicht abgerechnet])
+        text(fill: muted)[#unbilled-badge #h(1.5mm) #num(e.hours) Std.]
       },
       hairline,
     ))
