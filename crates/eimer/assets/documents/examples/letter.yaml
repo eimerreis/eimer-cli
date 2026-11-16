@@ -1,0 +1,21 @@
+type: letter
+date: 2026-11-16
+subject: Projektstart Relaunch Shop
+info:
+  Projekt: Relaunch Shop
+recipient:
+  name: Kunde GmbH
+  attention: Anna Berger
+  street: Beispielweg 12
+  zip: "12345"
+  city: Beispielstadt
+body: |
+  Hallo Anna,
+
+  ab sofort findest du alle Fragen, Dokumente und den aktuellen Stand im Kundenportal. Dort kannst du direkt antworten, ohne Mail-Pingpong.
+
+  Für den Start brauche ich von euch:
+
+  - Zugang zum bisherigen Shop
+  - Produktdaten als Export
+  - eine Ansprechperson für Rechtstexte

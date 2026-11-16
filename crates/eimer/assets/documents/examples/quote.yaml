@@ -1,0 +1,35 @@
+type: quote
+number: AN-2026-009
+date: 2026-11-16
+valid_days: 30
+project: Relaunch Shop
+client:
+  name: Kunde GmbH
+  attention: Anna Berger
+  street: Beispielweg 12
+  zip: "12345"
+  city: Beispielstadt
+intro: |
+  Hallo Anna,
+
+  danke für das gute Gespräch letzte Woche. Hier ist das Angebot für den Relaunch, aufgeteilt in drei Meilensteine. Jeder endet mit etwas, das ihr anfassen und testen könnt.
+items:
+  - description: Konzept
+    detail: Workshop, Informationsarchitektur, Klick-Prototyp
+    quantity: 1
+    unit: Pauschale
+    price: 2800
+  - description: Beta
+    detail: Produktseiten, Checkout, Newsletter
+    quantity: 1
+    unit: Pauschale
+    price: 4200
+  - description: Launch
+    detail: Migration, Go-live, zwei Wochen Begleitung
+    quantity: 1
+    unit: Pauschale
+    price: 3000
+terms: |
+  Abrechnung je Meilenstein nach Abnahme. Zusätzliche Wünsche rechne ich nach Aufwand mit 95,00 € pro Stunde ab.
+outro: |
+  Ich freu mich drauf.

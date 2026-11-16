@@ -1,0 +1,18 @@
+# Business details printed on every document (letterhead, footer, payment line).
+# eimer reads it from ~/.config/eimer/sender.yaml; pass another file with --sender.
+company: Muster IT
+owner: Max Mustermann
+street: Musterstraße 1
+zip: "12345"
+city: Musterstadt
+email: hallo@example.com
+phone: +49 123 456789
+web: example.com
+logo: eimerreis       # eimerreis | name | name-stacked; a document's `logo:` overrides it
+vat_id: DE000000000   # USt-IdNr.
+# tax_number: 12/345/67890  # Steuernummer
+small_business: false # true: § 19 UStG, invoices without VAT
+bank:
+  name: Musterbank
+  iban: DE00000000000000000000
+  bic: MUSTDEXXXXX

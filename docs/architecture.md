@@ -83,6 +83,12 @@ graph TB
 - Hands work to a coding agent via a rendered prompt (built-in `default_prompt.md` or the repo's `promptTemplate`)
 - See [feature 009](features/009-product-updates.md)
 
+### `commands/doc`
+- `new <type|sender> [path]`, `render <yaml> [-o] [--sender] [--watch] [--png]`: brand documents rendered with the external `typst` binary
+- Templates, brand fonts and examples live in `crates/eimer/assets/documents/`, are compiled in (`include_bytes!`) and unpacked once per content hash to `~/.cache/eimer/documents/<hash>`
+- Sender details (VAT ID, bank) stay out of the repo: `~/.config/eimer/sender.yaml`
+- `time report --project` renders through it
+
 ### `commands/upgrade`
 - `upgrade [--check] [--to <version>] [--force]`: finds the newest `eimer/v*` GitHub Release, downloads the asset for the current platform, verifies its `.sha256`, replaces itself (`self-replace`)
 - `link [--dir] [--remove]`: creates the multi-call symlinks (`.cmd` shims on Windows)

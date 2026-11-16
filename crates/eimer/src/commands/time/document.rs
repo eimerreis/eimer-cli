@@ -1,6 +1,6 @@
 //! `eimer time report --project <id|name>`: the time report document (Zeitbuchungen) for one
-//! project. Writes the data as YAML in the `time-report` format of the brand document templates
-//! (eimerreis/freelance-ops, `packages/documents`) and renders it to PDF with their `doc` CLI.
+//! project. Writes the data as YAML in the `time-report` format and renders it to PDF with
+//! `eimer doc` (see `commands/doc`).
 
 use std::path::{Path, PathBuf};
 
@@ -9,8 +9,9 @@ use chrono::NaiveDate;
 use serde::Serialize;
 
 use super::api::{Project, TimeClient, TimeRecord};
+use crate::commands::doc;
 use crate::core::error::HintExt;
-use crate::core::{process, ui};
+use crate::core::ui;
 
 pub struct DocumentRequest<'a> {
     pub project: &'a str,
@@ -67,19 +68,23 @@ pub fn run(request: DocumentRequest) -> Result<()> {
     std::fs::write(&yaml, to_yaml(&document))
         .with_context(|| format!("Failed to write {}", yaml.display()))?;
 
-    let code = process::run_inherit([
-        "doc",
-        &yaml.to_string_lossy(),
-        "-o",
-        &pdf.to_string_lossy(),
-    ])
+    doc::render::render(&doc::RenderOptions {
+        data: &yaml,
+        output: Some(&pdf),
+        sender: None,
+        watch: false,
+        png: false,
+    })
+    .with_context(|| {
+        format!(
+            "Failed to render the time report; the data is in {}",
+            yaml.display()
+        )
+    })
     .hint(format!(
-        "The data is in {}. Install the doc CLI from eimerreis/freelance-ops: `npm link -w @eimerreis/documents`, then rerun or call `doc` on the YAML.",
+        "Fix the YAML if needed, then `eimer doc render {}`.",
         yaml.display()
     ))?;
-    if code != 0 {
-        bail!("doc exited with {code}; the data is in {}", yaml.display());
-    }
     let hours: f64 = document.entries.iter().map(|e| e.hours).sum();
     ui::print_success(&format!(
         "{} ({} entries, {} h)",
@@ -193,7 +198,7 @@ pub fn output_path(output: Option<&str>, document: &TimeReportDocument) -> PathB
     }
 }
 
-/// YAML for `doc`. Strings are JSON-quoted, which YAML reads as double-quoted scalars.
+/// YAML for `eimer doc render`. Strings are JSON-quoted, which YAML reads as double-quoted scalars.
 pub fn to_yaml(document: &TimeReportDocument) -> String {
     let quote = |s: &str| serde_json::to_string(s).expect("string serializes");
     let mut out = format!(

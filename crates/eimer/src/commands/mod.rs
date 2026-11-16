@@ -1,4 +1,5 @@
 pub mod configure;
+pub mod doc;
 pub mod pipeline;
 pub mod pr;
 pub mod product;

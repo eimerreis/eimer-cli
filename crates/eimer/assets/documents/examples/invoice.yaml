@@ -1,0 +1,30 @@
+type: invoice
+number: RE-2026-014
+date: 2026-11-16
+service_period: { from: 2026-10-01, to: 2026-10-31 }
+due_days: 14
+project: Relaunch Shop
+client:
+  name: Kunde GmbH
+  attention: Anna Berger
+  street: Beispielweg 12
+  zip: "12345"
+  city: Beispielstadt
+intro: |
+  Hallo Anna,
+
+  wie vereinbart berechne ich den zweiten Meilenstein *Beta* des Shop-Relaunchs.
+items:
+  - description: Meilenstein Beta
+    detail: Produktseiten-Template, Checkout mit PayPal, Newsletter-Anmeldung
+    quantity: 1
+    unit: Pauschale
+    price: 3200
+  - description: Zusätzliche Entwicklung
+    detail: Import der Altdaten aus dem bisherigen Shop
+    quantity: 10.5
+    unit: Std.
+    price: 95
+vat_rate: 19
+outro: |
+  Danke für die gute Zusammenarbeit!

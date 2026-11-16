@@ -40,6 +40,8 @@ enum Commands {
     Product(commands::product::ProductArgs),
     /// Runtime secrets as SOPS-encrypted files in the repo
     Secrets(commands::secrets::SecretsArgs),
+    /// Business documents (invoice, quote, contract, ...) rendered from YAML
+    Doc(commands::doc::DocArgs),
     /// Book PR work to codeunity time
     Time(commands::time::TimeArgs),
     /// Manage shared CLI defaults (~/.config/eimer/config.json)
@@ -85,6 +87,7 @@ fn main() -> ExitCode {
         Commands::Release(args) => commands::release::run(args),
         Commands::Product(args) => commands::product::run(args),
         Commands::Secrets(args) => commands::secrets::run(args),
+        Commands::Doc(args) => commands::doc::run(args),
         Commands::Time(args) => commands::time::run(args),
         Commands::Configure(args) => commands::configure::run(args),
         Commands::Upgrade(args) => commands::upgrade::run(args),
