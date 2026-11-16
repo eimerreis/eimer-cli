@@ -52,7 +52,7 @@
 #logo(sender, variant: data.at("logo", default: none), height: 11mm)
 #v(5mm)
 #grid(
-  columns: (1fr, if has-unbilled { 118mm } else { 92mm }),
+  columns: (1fr, if has-unbilled { 100mm } else { 92mm }),
   align: (left + bottom, left + bottom),
   [
     #heading-display(size: 26pt, data.at("title", default: "Zeitbuchungen"))
@@ -74,8 +74,7 @@
       spacing: 1fr,
       figure(onsite, [vor Ort]),
       figure(remote, [remote]),
-      ..if has-unbilled { (figure(unbilled, [nicht abgerechnet]),) },
-      figure(total, if has-unbilled [abgerechnet] else [gesamt]),
+      ..if has-unbilled { (figure(unbilled, [nicht abgerechnet]),) } else { (figure(total, [gesamt]),) },
     )
   ],
 )
