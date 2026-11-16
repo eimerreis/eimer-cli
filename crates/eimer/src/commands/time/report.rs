@@ -2,6 +2,7 @@
 //!
 //! Per project: hours in a date window (default: the current ISO week), hours not yet
 //! invoiced (with the oldest unbilled day) and budget progress where time tracks one.
+//! With `--project` it renders the time report document for that project instead (see `document`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -15,13 +16,19 @@ use crate::core::ui;
 
 #[derive(Args)]
 pub struct ReportArgs {
-    /// Start of the window, yyyy-mm-dd (defaults to Monday of the current week)
+    /// Render the time report PDF (Zeitbuchungen) for this project: id or name
+    #[arg(long, short = 'p')]
+    project: Option<String>,
+    /// Start of the window, yyyy-mm-dd (defaults to Monday of the current week; with --project: the first record)
     #[arg(long)]
     from: Option<String>,
-    /// End of the window, yyyy-mm-dd, inclusive (defaults to today)
+    /// End of the window, yyyy-mm-dd, inclusive (defaults to today; with --project: the last record)
     #[arg(long)]
     to: Option<String>,
-    /// Print machine-readable JSON
+    /// With --project: PDF path (defaults to zeitbuchungen-<client>-<from>-<to>.pdf); the YAML lands next to it
+    #[arg(long, short = 'o', requires = "project")]
+    output: Option<String>,
+    /// Print machine-readable JSON (with --project: the document data instead of a PDF)
     #[arg(long, short = 'j')]
     json: bool,
 }
@@ -74,6 +81,22 @@ pub struct Budget {
 }
 
 pub fn report(args: ReportArgs) -> Result<()> {
+    if let Some(project) = args.project.as_deref() {
+        let from = args.from.as_deref().map(parse_date).transpose()?;
+        let to = args.to.as_deref().map(parse_date).transpose()?;
+        if let (Some(f), Some(t)) = (from, to)
+            && f > t
+        {
+            return Err(anyhow!("--from {f} is after --to {t}"));
+        }
+        return super::document::run(super::document::DocumentRequest {
+            project,
+            from,
+            to,
+            output: args.output.as_deref(),
+            json: args.json,
+        });
+    }
     let (from, to) = window(
         args.from.as_deref(),
         args.to.as_deref(),
@@ -190,19 +213,20 @@ fn window(
     to: Option<&str>,
     today: NaiveDate,
 ) -> Result<(NaiveDate, NaiveDate)> {
-    let parse = |v: &str| {
-        NaiveDate::parse_from_str(v, "%Y-%m-%d")
-            .map_err(|_| anyhow!("Invalid date \"{v}\", expected yyyy-mm-dd"))
-    };
-    let to = to.map(parse).transpose()?.unwrap_or(today);
+    let to = to.map(parse_date).transpose()?.unwrap_or(today);
     let from = match from {
-        Some(v) => parse(v)?,
+        Some(v) => parse_date(v)?,
         None => to - Duration::days(i64::from(to.weekday().num_days_from_monday())),
     };
     if from > to {
         return Err(anyhow!("--from {from} is after --to {to}"));
     }
     Ok((from, to))
+}
+
+fn parse_date(value: &str) -> Result<NaiveDate> {
+    NaiveDate::parse_from_str(value, "%Y-%m-%d")
+        .map_err(|_| anyhow!("Invalid date \"{value}\", expected yyyy-mm-dd"))
 }
 
 fn record_date(raw: &str) -> Option<NaiveDate> {
@@ -271,6 +295,7 @@ mod tests {
             duration,
             date: date.into(),
             invoiced,
+            on_site: false,
         }
     }
 
