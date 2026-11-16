@@ -1,4 +1,5 @@
-//! Repo-level `.time.json` (time projects this repo bills to) and the PR it acts on.
+//! Repo-level `.time.json` (time projects this repo bills to, with the invoices written for
+//! them) and the PR it acts on.
 
 use std::path::PathBuf;
 
@@ -21,6 +22,42 @@ pub struct ProjectConfig {
     pub id: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Invoices written for this project, oldest first (see `eimer time invoiced`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub invoices: Vec<Invoice>,
+}
+
+/// One invoice: it settles every record up to and including `through`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Invoice {
+    /// Last work day the invoice covers, yyyy-mm-dd.
+    pub through: String,
+    /// Invoice date, yyyy-mm-dd.
+    pub date: String,
+    /// Invoice number in the billing tool, e.g. Lexoffice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<String>,
+}
+
+impl ProjectConfig {
+    pub fn last_invoice(&self) -> Option<&Invoice> {
+        self.invoices.last()
+    }
+
+    /// Appends an invoice; it must cover days after the previous one.
+    pub fn add_invoice(&mut self, invoice: Invoice) -> Result<()> {
+        if let Some(last) = self.last_invoice()
+            && invoice.through <= last.through
+        {
+            return Err(anyhow!(
+                "The last invoice already covers work through {}",
+                last.through
+            ))
+            .hint("Pass a later --through date, or fix .time.json by hand");
+        }
+        self.invoices.push(invoice);
+        Ok(())
+    }
 }
 
 /// Top level of the current worktree.
@@ -175,6 +212,7 @@ mod tests {
                     alias: (*a).into(),
                     id: i as u64 + 1,
                     name: None,
+                    invoices: vec![],
                 })
                 .collect(),
         }
@@ -186,6 +224,50 @@ mod tests {
         assert_eq!(config(&["web", "app"]).resolve(Some("app")).unwrap().id, 2);
         assert!(config(&["web", "app"]).resolve(None).is_err());
         assert!(config(&["web"]).resolve(Some("nope")).is_err());
+    }
+
+    fn invoice(through: &str) -> Invoice {
+        Invoice {
+            through: through.into(),
+            date: "2026-11-17".into(),
+            number: None,
+        }
+    }
+
+    #[test]
+    fn invoices_must_move_forward() {
+        let mut project = config(&["web"]).projects.remove(0);
+        project.add_invoice(invoice("2026-10-16")).unwrap();
+        project.add_invoice(invoice("2026-11-16")).unwrap();
+        let err = project.add_invoice(invoice("2026-11-16")).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "The last invoice already covers work through 2026-11-16"
+        );
+        assert_eq!(project.last_invoice(), Some(&invoice("2026-11-16")));
+    }
+
+    #[test]
+    fn reads_config_without_invoices_and_writes_them_only_when_present() {
+        let config: TimeConfig =
+            serde_json::from_str(r#"{"projects":[{"alias":"web","id":7}]}"#).unwrap();
+        assert!(config.projects[0].invoices.is_empty());
+        assert_eq!(
+            serde_json::to_string(&config).unwrap(),
+            r#"{"projects":[{"alias":"web","id":7}]}"#
+        );
+
+        let mut project = config.projects[0].clone();
+        project
+            .add_invoice(Invoice {
+                number: Some("RE0042".into()),
+                ..invoice("2026-11-16")
+            })
+            .unwrap();
+        assert_eq!(
+            serde_json::to_string(&project).unwrap(),
+            r#"{"alias":"web","id":7,"invoices":[{"through":"2026-11-16","date":"2026-11-17","number":"RE0042"}]}"#
+        );
     }
 
     #[test]

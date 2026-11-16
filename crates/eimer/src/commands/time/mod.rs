@@ -3,6 +3,7 @@
 //! Every PR adds a pending entry (`.time/*.md`, via `eimer time add`) or states
 //! `Time: none (reason)` in its body; a required CI check blocks merging otherwise.
 //! `eimer time book` books pending entries and appends them to `TIME.md`.
+//! `eimer time invoiced` records an invoice in `.time.json`; the time report starts after it.
 //! The pre-push hook (`eimer time hook install`, also run by `init`) writes and
 //! updates the branch's entry from measured focus time.
 
@@ -59,6 +60,8 @@ enum TimeCommand {
     Pending(book::PendingArgs),
     /// Book pending entries to time and append them to TIME.md
     Book(book::BookArgs),
+    /// Record an invoice in .time.json; the time report then starts the day after it
+    Invoiced(book::InvoicedArgs),
     /// Mark the PR as not billable
     None(book::NoneArgs),
     /// Check the PR adds a time entry or has a Time line (exit 1 otherwise)
@@ -87,6 +90,7 @@ pub fn run(args: TimeArgs) -> Result<()> {
         TimeCommand::Hook(a) => hook::run(a),
         TimeCommand::Pending(a) => book::pending(a),
         TimeCommand::Book(a) => book::book(a),
+        TimeCommand::Invoiced(a) => book::invoiced(a),
         TimeCommand::None(a) => book::none(a),
         TimeCommand::Status(a) => book::status(a),
         TimeCommand::Report(a) => report::report(a),
