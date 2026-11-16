@@ -1,4 +1,4 @@
-//! `time projects|init|suggest|add|pending|book|none|status`.
+//! `time projects|init|suggest|add|pending|book|invoiced|none|status`.
 
 use std::collections::BTreeMap;
 
@@ -10,7 +10,7 @@ use super::activity::{self, RepoIdentity};
 use super::api::{TimeClient, TimeRecordInput};
 use super::block::{self, TimeEntry};
 use super::pending::{self, Booking, Entry, PendingFile};
-use super::repo::{self, ProjectConfig};
+use super::repo::{self, Invoice, ProjectConfig};
 use super::{duration, suggest as suggestion};
 use crate::core::error::{HintExt, SilentExit};
 use crate::core::ui;
@@ -100,6 +100,22 @@ pub struct BookArgs {
 }
 
 #[derive(Args)]
+pub struct InvoicedArgs {
+    /// Last work day the invoice covers (yyyy-mm-dd)
+    #[arg(long)]
+    through: String,
+    /// Invoice number, e.g. from Lexoffice
+    #[arg(long, short = 'n')]
+    number: Option<String>,
+    /// Invoice date (yyyy-mm-dd); defaults to today
+    #[arg(long)]
+    date: Option<String>,
+    /// Project alias from .time.json (required when it lists several)
+    #[arg(long, short = 'p')]
+    project: Option<String>,
+}
+
+#[derive(Args)]
 pub struct NoneArgs {
     /// Why no time is recorded
     #[arg(required = true, num_args = 1..)]
@@ -143,6 +159,12 @@ pub fn init(args: InitArgs) -> Result<()> {
         .hint("See `eimer time projects`.")?;
     let alias = args.alias.unwrap_or_else(|| slug(&project.name));
     let mut config = repo::read_config()?.unwrap_or_default();
+    let invoices = config
+        .projects
+        .iter()
+        .find(|p| p.id == project.id)
+        .map(|p| p.invoices.clone())
+        .unwrap_or_default();
     config
         .projects
         .retain(|p| p.id != project.id && p.alias != alias);
@@ -150,6 +172,7 @@ pub fn init(args: InitArgs) -> Result<()> {
         alias: alias.clone(),
         id: project.id,
         name: Some(project.name.clone()),
+        invoices,
     });
     repo::save_config(&config)?;
     ui::print_success(&format!(
@@ -308,6 +331,14 @@ struct PendingSummary<'a> {
     entries: Vec<PendingRow<'a>>,
     total_hours: f64,
     last_booking: Option<String>,
+    last_invoices: Vec<LastInvoice>,
+}
+
+#[derive(Serialize)]
+struct LastInvoice {
+    project: String,
+    #[serde(flatten)]
+    invoice: Invoice,
 }
 
 #[derive(Serialize)]
@@ -333,6 +364,17 @@ pub fn pending(args: PendingArgs) -> Result<()> {
             .collect(),
         total_hours: files.iter().map(|f| f.entry.hours).sum(),
         last_booking,
+        last_invoices: repo::read_config()?
+            .map(|c| c.projects)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|p| {
+                Some(LastInvoice {
+                    invoice: p.last_invoice()?.clone(),
+                    project: p.alias,
+                })
+            })
+            .collect(),
     };
     if args.json {
         return ui::print_json(&summary);
@@ -361,6 +403,63 @@ pub fn pending(args: PendingArgs) -> Result<()> {
             "Last booking: {}",
             summary.last_booking.as_deref().unwrap_or("none yet")
         )),
+    );
+    for last in &summary.last_invoices {
+        ui::print_info(
+            &format!(
+                "Last invoice @{}: work through {}",
+                last.project, last.invoice.through
+            ),
+            Some(&format!(
+                "{}invoiced {}",
+                last.invoice
+                    .number
+                    .as_deref()
+                    .map(|n| format!("{n}, "))
+                    .unwrap_or_default(),
+                last.invoice.date
+            )),
+        );
+    }
+    Ok(())
+}
+
+/// Records an invoice in .time.json: later reports start the day after `--through`.
+pub fn invoiced(args: InvoicedArgs) -> Result<()> {
+    let date = |value: &str| {
+        chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+            .map(|d| d.to_string())
+            .map_err(|_| anyhow!("Invalid date \"{value}\", expected yyyy-mm-dd"))
+    };
+    let invoice = Invoice {
+        through: date(&args.through)?,
+        date: match args.date.as_deref() {
+            Some(value) => date(value)?,
+            None => chrono::Local::now().date_naive().to_string(),
+        },
+        number: args.number,
+    };
+    let mut config = repo::load_config()?;
+    let alias = config.resolve(args.project.as_deref())?.alias.clone();
+    let project = config
+        .projects
+        .iter_mut()
+        .find(|p| p.alias == alias)
+        .expect("resolved project exists");
+    project.add_invoice(invoice.clone())?;
+    repo::save_config(&config)?;
+    ui::print_success(&format!(
+        "Recorded invoice{} for @{alias}: work through {}",
+        invoice
+            .number
+            .as_deref()
+            .map(|n| format!(" {n}"))
+            .unwrap_or_default(),
+        invoice.through
+    ));
+    ui::print_info(
+        &format!("Commit {}", repo::CONFIG_FILE),
+        Some("`eimer time report --project` now starts the day after"),
     );
     Ok(())
 }

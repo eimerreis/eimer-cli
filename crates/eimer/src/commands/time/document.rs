@@ -2,6 +2,8 @@
 //! project. Writes the data as YAML in the `time-report` format and renders it to PDF with
 //! `eimer doc` (see `commands/doc`). Records without the invoiced flag ("Abgr.") in time count as
 //! not billed: the report lists them but keeps them out of the billed totals.
+//! Inside a repo whose `.time.json` lists the project, `--project` also takes its alias, and
+//! without `--from` the report starts the day after the last invoice recorded there.
 
 use std::path::{Path, PathBuf};
 
@@ -10,6 +12,7 @@ use chrono::NaiveDate;
 use serde::Serialize;
 
 use super::api::{Project, TimeClient, TimeRecord};
+use super::repo::{self, Invoice, TimeConfig};
 use crate::commands::doc;
 use crate::core::error::HintExt;
 use crate::core::ui;
@@ -48,22 +51,50 @@ pub struct Entry {
 }
 
 pub fn run(request: DocumentRequest) -> Result<()> {
+    // Outside a git repo, or without .time.json, there is no alias and no invoice history.
+    let config = repo::read_config().ok().flatten();
+    let query = config
+        .as_ref()
+        .and_then(|c| c.projects.iter().find(|p| p.alias == request.project))
+        .map_or_else(|| request.project.to_string(), |p| p.id.to_string());
     let client = TimeClient::create()?;
-    let document = ui::spin_unless(request.json, "Loading time records", || {
+    let (document, after_invoice) = ui::spin_unless(request.json, "Loading time records", || {
         let projects = client.projects()?;
-        let project = find_project(&projects, request.project)?;
+        let project = find_project(&projects, &query)?;
+        let after_invoice = match request.from {
+            Some(_) => None,
+            None => after_last_invoice(config.as_ref(), project.id),
+        };
         let records = client.all_time_records(project.id)?;
         let customer = customer_name(&client, project);
-        build_document(
+        let document = build_document(
             project,
             customer.as_deref(),
             &records,
-            request.from,
+            request
+                .from
+                .or(after_invoice.as_ref().map(|(from, _)| *from)),
             request.to,
-        )
+        )?;
+        anyhow::Ok((document, after_invoice))
     })?;
     if request.json {
         return ui::print_json(&document);
+    }
+    if let Some((from, invoice)) = &after_invoice {
+        ui::print_info(
+            &format!("Starting {from}, after the last invoice"),
+            Some(&format!(
+                "{}work through {}, from {}; pass --from to change",
+                invoice
+                    .number
+                    .as_deref()
+                    .map(|n| format!("{n}: "))
+                    .unwrap_or_default(),
+                invoice.through,
+                repo::CONFIG_FILE
+            )),
+        );
     }
 
     let pdf = output_path(request.output, &document);
@@ -133,6 +164,20 @@ pub fn find_project<'a>(projects: &'a [Project], query: &str) -> Result<&'a Proj
         ))
         .hint("Pass the project id or a longer name"),
     }
+}
+
+/// The day after the last invoice recorded for the project in .time.json.
+pub fn after_last_invoice(
+    config: Option<&TimeConfig>,
+    project_id: u64,
+) -> Option<(NaiveDate, Invoice)> {
+    let invoice = config?
+        .projects
+        .iter()
+        .find(|p| p.id == project_id)?
+        .last_invoice()?;
+    let through = NaiveDate::parse_from_str(&invoice.through, "%Y-%m-%d").ok()?;
+    Some((through.succ_opt()?, invoice.clone()))
 }
 
 /// The billing customer's organization; `None` when the project has none or the lookup fails.
@@ -285,6 +330,29 @@ mod tests {
 
     fn d(v: &str) -> NaiveDate {
         NaiveDate::parse_from_str(v, "%Y-%m-%d").unwrap()
+    }
+
+    #[test]
+    fn after_last_invoice_starts_the_day_after_the_latest_invoice() {
+        let invoice = |through: &str| Invoice {
+            through: through.into(),
+            date: "2026-11-17".into(),
+            number: None,
+        };
+        let config = TimeConfig {
+            projects: vec![repo::ProjectConfig {
+                alias: "lauterbad".into(),
+                id: 77,
+                name: None,
+                invoices: vec![invoice("2026-10-16"), invoice("2026-11-30")],
+            }],
+        };
+        assert_eq!(
+            after_last_invoice(Some(&config), 77),
+            Some((d("2026-12-01"), invoice("2026-11-30")))
+        );
+        assert_eq!(after_last_invoice(Some(&config), 9), None);
+        assert_eq!(after_last_invoice(None, 77), None);
     }
 
     #[test]
