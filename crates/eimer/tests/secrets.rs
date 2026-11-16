@@ -28,6 +28,8 @@ fn fixture() -> Fixture {
     let bin = dir.path().join("bin");
     std::fs::create_dir_all(&repo).unwrap();
     std::fs::create_dir_all(&bin).unwrap();
+    // git reports the resolved path (macOS: /var -> /private/var)
+    let repo = repo.canonicalize().unwrap();
     assert!(
         Command::new("git")
             .args(["init", "-q"])
