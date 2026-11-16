@@ -42,6 +42,7 @@ Requirements: [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cl
 | `pipeline runs\|list\|show\|open\|trigger\|watch` | Azure DevOps pipelines |
 | `release changelog\|approve\|configure` | Release changelogs (Teams posting) and approvals |
 | `eimer time login\|projects\|init\|suggest\|add\|none\|status\|pending\|book\|report` | Record work to codeunity time ([below](#time-tracking)) |
+| `eimer doc new\|render` | Invoices, quotes, letters, reminders, contracts and time reports as PDF ([below](#documents)) |
 | `eimer secrets init\|recipients\|edit\|get\|decrypt` | Runtime secrets as SOPS-encrypted files in the repo ([below](#runtime-secrets)) |
 | `eimer product init\|status\|update\|check` | Public update posts from Changesets changelogs ([below](#product-updates)) |
 | `eimer configure` | Shared defaults in `~/.config/eimer/config.json` |
@@ -71,7 +72,7 @@ eimer time report [--from --to] [--json]  # hours per project: window (default t
 eimer time report --project <id|name> [--from --to] [-o file.pdf]  # time report PDF (Zeitbuchungen) for a client
 ```
 
-`eimer time report --project` writes the project's records in the window (default: all of them) as `time-report` YAML and renders it with `doc` from [freelance-ops](https://github.com/eimerreis/freelance-ops/tree/main/packages/documents): run `npm link -w @eimerreis/documents` there once, and have `typst` installed. The YAML stays next to the PDF, so you can fix wording and re-render with `doc <file>.yaml`. With `--json` it prints the data instead. The client name comes from the project's billing customer, falling back to the project name.
+`eimer time report --project` writes the project's records in the window (default: all of them) as `time-report` YAML and renders it with [`eimer doc`](#documents). The YAML stays next to the PDF, so you can fix wording and re-render with `eimer doc render <file>.yaml`. With `--json` it prints the data instead. The client name comes from the project's billing customer, falling back to the project name.
 
 Entry file:
 
@@ -91,6 +92,23 @@ Ledger for pending time entries
 - Login uses the Keycloak client `time-cli-moritz` and receives the redirect on `http://localhost:1995/callback`. The token is kept in the macOS keychain (`eimer.time`; elsewhere `~/.config/eimer/time-token.json`, mode 0600) and refreshes automatically. Override with `EIMER_TIME_CLIENT_ID`, `EIMER_TIME_REDIRECT_URI`, `EIMER_TIME_API_URL`. A non-loopback redirect URI (e.g. the Raycast extension's client) falls back to pasting the redirect URL.
 - With one project in `.time.json` no alias is needed; with several pass `--project <alias>`.
 - The CI check, PR template and agent instructions for client repos live in [eimerreis/freelance-ops](https://github.com/eimerreis/freelance-ops).
+
+## Documents
+
+Business documents in the EimerReis brand, one YAML file each, rendered to PDF/A-3b with [Typst](https://github.com/typst/typst#installation) (0.15+, on `PATH`). Templates and brand fonts ship inside eimer.
+
+```sh
+eimer doc new sender                 # ~/.config/eimer/sender.yaml: your business details, once
+eimer doc new invoice RE-2026-015.yaml  # start from an example
+eimer doc render RE-2026-015.yaml    # -> RE-2026-015.pdf
+eimer doc render vertrag.yaml --watch   # re-render on save; --png for page previews
+```
+
+The YAML's `type:` picks the template: `invoice`, `quote`, `letter`, `reminder` (`level: 0` reminder, `1, 2, …` dunning), `contract`, `time-report`.
+Text fields (`intro`, `outro`, `terms`, `body`, item `detail`) are [Typst markup](https://typst.app/docs/reference/syntax/): `*bold*`, `_italic_`, `- ` lists, `+ ` numbered paragraphs, `= Title` for a contract's next § section.
+Amounts and hours are plain numbers; templates format them in German.
+`small_business: true` in the sender drops VAT (§ 19 UStG); `reverse_charge: true` on an invoice applies 0 %; otherwise `vat_rate` (default 19).
+`logo:` (`eimerreis`, `name`, `name-stacked`) in the sender sets the default lockup; a document's `logo:` overrides it.
 
 ## Runtime secrets
 

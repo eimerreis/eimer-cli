@@ -1,0 +1,49 @@
+# Example service contract. Template text only, not legal advice: have real contracts reviewed.
+# `body` is Typst markup: "= Title" starts a numbered § section, "+ " a numbered paragraph (1), (2) …
+type: contract
+logo: name-stacked      # formal lockup for this client
+title: Dienstleistungsvertrag
+subtitle: Relaunch des Onlineshops
+client:
+  name: Kunde GmbH
+  represented_by: Anna Berger (Geschäftsführerin)
+  signatory: Anna Berger
+  street: Beispielweg 12
+  zip: "12345"
+  city: Beispielstadt
+body: |
+  = Vertragsgegenstand
+  + Der Auftragnehmer entwickelt für den Auftraggeber den neuen Onlineshop gemäß dem Angebot AN-2026-009 vom 16.11.2026, das Bestandteil dieses Vertrags ist.
+  + Der Auftragnehmer erbringt die Leistungen selbstständig und eigenverantwortlich. Er ist in der Wahl von Ort und Zeit der Tätigkeit frei, soweit die Projektziele dies zulassen.
+
+  = Leistungsumfang und Meilensteine
+  + Die Leistung gliedert sich in die Meilensteine *Konzept*, *Beta* und *Launch*.
+  + Jeder Meilenstein endet mit einer Abnahme durch den Auftraggeber. Die Abnahme gilt als erteilt, wenn der Auftraggeber nicht innerhalb von zehn Werktagen nach Bereitstellung wesentliche Mängel schriftlich mitteilt.
+  + Änderungen am Leistungsumfang vereinbaren die Parteien in Textform. Mehraufwand wird nach § 3 Abs. 2 vergütet.
+
+  = Vergütung
+  + Die Vergütung beträgt pauschal 10.000,00 € netto, fällig in drei Raten nach Abnahme des jeweiligen Meilensteins.
+  + Leistungen außerhalb des vereinbarten Umfangs werden mit 95,00 € netto pro Stunde abgerechnet.
+  + Rechnungen sind innerhalb von 14 Tagen ohne Abzug zahlbar. Alle Beträge verstehen sich zuzüglich der gesetzlichen Umsatzsteuer.
+
+  = Mitwirkung des Auftraggebers
+  Der Auftraggeber stellt die benötigten Inhalte, Zugänge und Ansprechpersonen rechtzeitig bereit. Verzögerungen durch fehlende Mitwirkung verschieben vereinbarte Termine entsprechend.
+
+  = Nutzungsrechte
+  + Mit vollständiger Zahlung erhält der Auftraggeber das einfache, zeitlich und räumlich unbeschränkte Nutzungsrecht an den für ihn erstellten Arbeitsergebnissen.
+  + Vorbestehende Werkzeuge, Bibliotheken und Bausteine des Auftragnehmers bleiben dessen Eigentum; der Auftraggeber erhält daran ein einfaches Nutzungsrecht im Rahmen des Projekts.
+
+  = Vertraulichkeit
+  Beide Parteien behandeln alle vertraulichen Informationen der jeweils anderen Partei auch über das Vertragsende hinaus vertraulich.
+
+  = Haftung
+  Der Auftragnehmer haftet unbeschränkt für Vorsatz und grobe Fahrlässigkeit. Bei leichter Fahrlässigkeit haftet er nur bei Verletzung wesentlicher Vertragspflichten und begrenzt auf den vorhersehbaren, vertragstypischen Schaden.
+
+  = Laufzeit und Kündigung
+  + Der Vertrag endet mit Abnahme des letzten Meilensteins.
+  + Das Recht zur außerordentlichen Kündigung aus wichtigem Grund bleibt unberührt. Bereits erbrachte Leistungen werden anteilig vergütet.
+
+  = Schlussbestimmungen
+  + Änderungen und Ergänzungen bedürfen der Textform.
+  + Sollte eine Bestimmung unwirksam sein, bleibt die Wirksamkeit der übrigen Bestimmungen unberührt.
+  + Es gilt deutsches Recht. Gerichtsstand ist, soweit zulässig, Freudenstadt.

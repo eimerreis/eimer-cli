@@ -1,0 +1,21 @@
+type: reminder
+date: 2026-12-10
+level: 0          # 0 = Zahlungserinnerung, 1 = 1. Mahnung, 2 = 2. Mahnung …
+pay_days: 10
+fee: 0
+client:
+  name: Kunde GmbH
+  attention: Anna Berger
+  street: Beispielweg 12
+  zip: "12345"
+  city: Beispielstadt
+invoice:
+  number: RE-2026-014
+  date: 2026-11-16
+  due: 2026-11-30
+  amount: 4995.03
+  paid: 0
+intro: |
+  Hallo Anna,
+
+  vermutlich ist es im Trubel untergegangen: Für die folgende Rechnung habe ich noch keinen Zahlungseingang gesehen.

@@ -1,0 +1,20 @@
+type: time-report
+client: Beispiel GmbH
+project: IT-Betreuung
+period: { from: 2026-03-26, to: 2026-11-02 }
+entries:
+  - { date: 2026-03-26, location: remote, hours: 0.5, description: TeamViewer-Sitzung }
+  - { date: 2026-04-14, location: onsite, hours: 2, description: Analyse NAS-System und MacBook }
+  - { date: 2026-05-22, location: onsite, hours: 2, description: Neuinstallation MacBook }
+  - { date: 2026-06-06, location: remote, hours: 4, description: Datensicherung von externer Festplatte }
+  - date: 2026-07-30
+    location: onsite
+    hours: 1
+    description: |
+      Einrichtung Microsoft OneDrive
+      Kontakt mit Microsoft-Support wegen Lizenz
+      Kündigung eines bestehenden Abonnements
+  - { date: 2026-08-28, location: remote, hours: 2, description: Recherche zur Sicherung der Verzeichnisse }
+  - { date: 2026-09-22, location: remote, hours: 4, description: Eigenes Sicherungsskript für die Partitionstabelle }
+  - { date: 2026-10-05, location: remote, hours: 4, description: Backup der Daten nach Microsoft Azure }
+  - { date: 2026-11-02, location: remote, hours: 3, description: Übertragung der Sicherung von Azure nach OneDrive via rclone }
