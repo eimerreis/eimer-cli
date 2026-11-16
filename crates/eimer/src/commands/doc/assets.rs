@@ -60,7 +60,7 @@ pub fn file(path: &str) -> Result<&'static [u8]> {
 
 /// Writes the embedded files to `<cache>/eimer/documents/<hash>` unless already there.
 pub fn unpack() -> Result<PathBuf> {
-    let dir = cache_dir()?.join("documents").join(content_hash());
+    let dir = config::cache_dir()?.join("documents").join(content_hash());
     unpack_to(&dir)?;
     Ok(dir)
 }
@@ -90,22 +90,6 @@ fn content_hash() -> String {
         hasher.update(bytes);
     }
     hex::encode(&hasher.finalize()[..6])
-}
-
-/// `$XDG_CACHE_HOME/eimer`, `%LOCALAPPDATA%\eimer` on Windows, else `~/.cache/eimer`.
-fn cache_dir() -> Result<PathBuf> {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            cfg!(windows)
-                .then(|| std::env::var_os("LOCALAPPDATA").map(PathBuf::from))
-                .flatten()
-        });
-    Ok(match base {
-        Some(base) => base.join("eimer"),
-        None => config::home_dir()?.join(".cache").join("eimer"),
-    })
 }
 
 #[cfg(test)]

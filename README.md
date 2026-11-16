@@ -95,7 +95,7 @@ Ledger for pending time entries
 
 ## Documents
 
-Business documents in the EimerReis brand, one YAML file each, rendered to PDF/A-3b with [Typst](https://github.com/typst/typst#installation) (0.15+, on `PATH`). Templates and brand fonts ship inside eimer.
+Business documents in the EimerReis brand, one YAML file each, rendered to PDF/A-3b with [Typst](https://typst.app). Templates and brand fonts ship inside eimer; on first use eimer downloads Typst 0.15.1 (checksum-verified) to `~/.local/share/eimer/tools`, unless Typst 0.15+ is already on `PATH`.
 
 ```sh
 eimer doc new sender                 # ~/.config/eimer/sender.yaml: your business details, once

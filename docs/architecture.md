@@ -84,7 +84,7 @@ graph TB
 - See [feature 009](features/009-product-updates.md)
 
 ### `commands/doc`
-- `new <type|sender> [path]`, `render <yaml> [-o] [--sender] [--watch] [--png]`: brand documents rendered with the external `typst` binary
+- `new <type|sender> [path]`, `render <yaml> [-o] [--sender] [--watch] [--png]`: brand documents rendered with `typst`, installed on demand by `core::tools`
 - Templates, brand fonts and examples live in `crates/eimer/assets/documents/`, are compiled in (`include_bytes!`) and unpacked once per content hash to `~/.cache/eimer/documents/<hash>`
 - Sender details (VAT ID, bank) stay out of the repo: `~/.config/eimer/sender.yaml`
 - `time report --project` renders through it
@@ -95,6 +95,7 @@ graph TB
 
 ### `core/`
 - `config`: typed `config.json` with unknown keys preserved on save
+- `tools`: external binaries eimer installs itself (pinned version + per-platform SHA-256, unpacked to `~/.local/share/eimer/tools`); a new enough one on `PATH` wins
 - `context`: `.eimerrc` discovery and precedence (pure `select_context` is unit-tested)
 - `azure`: `AzScope` (`--org/--project` vs `--detect true`), remote parsing, work item URLs, WIQL escaping
 - `process`: `run_text` / `run_json` / `run_inherit`, cross-platform `open_url` and `copy_to_clipboard`; never uses a shell
