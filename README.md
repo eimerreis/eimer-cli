@@ -4,16 +4,18 @@ Developer CLI for Azure DevOps and GitHub workflows: tasks, pull requests, pipel
 
 ## Install
 
+The repo is private, so install and upgrade authenticate with `GITHUB_TOKEN`, or your [GitHub CLI](https://cli.github.com/) login (`gh auth login`).
+
 Linux / macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/eimerreis/eimer-cli/main/install.sh | sh
+gh api repos/eimerreis/eimer-cli/contents/install.sh -H 'Accept: application/vnd.github.raw' | sh
 ```
 
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/eimerreis/eimer-cli/main/install.ps1 | iex
+gh api repos/eimerreis/eimer-cli/contents/install.ps1 -H 'Accept: application/vnd.github.raw' | iex
 ```
 
 The installer downloads the binary for your platform from GitHub Releases, verifies its SHA-256 checksum, installs it to `~/.local/bin` (Windows: `%LOCALAPPDATA%\eimer\bin`) and creates `task`, `pr`, `pipeline` and `release` shortcuts. Options: `EIMER_VERSION=0.2.0`, `EIMER_INSTALL_DIR=...`, `EIMER_NO_LINKS=1`.

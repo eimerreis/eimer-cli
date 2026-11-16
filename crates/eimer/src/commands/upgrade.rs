@@ -9,7 +9,8 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 use crate::MULTICALL_GROUPS;
-use crate::core::ui;
+use crate::core::error::HintExt;
+use crate::core::{process, ui};
 
 pub const REPO: &str = "eimerreis/eimer-cli";
 /// Rust CLI releases are tagged `eimer/v<semver>`; `release/v*` tags belong to @tapio/release.
@@ -52,7 +53,9 @@ struct Release {
 #[derive(Deserialize, Debug)]
 struct Asset {
     name: String,
-    browser_download_url: String,
+    /// API URL of the asset; with `Accept: application/octet-stream` it serves the file, and
+    /// unlike `browser_download_url` it honours the token, which the private repo requires.
+    url: String,
 }
 
 /// Release asset name for the running platform, e.g. `eimer-x86_64-unknown-linux-musl`.
@@ -76,24 +79,43 @@ fn client() -> Result<reqwest::blocking::Client> {
     Ok(crate::core::http::builder().build()?)
 }
 
-fn get(client: &reqwest::blocking::Client, url: &str) -> Result<reqwest::blocking::Response> {
-    let mut request = client
-        .get(url)
-        .header("Accept", "application/vnd.github+json");
-    if let Some(token) = std::env::var("GITHUB_TOKEN")
-        .ok()
-        .or_else(|| std::env::var("GH_TOKEN").ok())
-    {
+/// Token for the private repo: `GITHUB_TOKEN`, `GH_TOKEN`, or the GitHub CLI login.
+fn github_token() -> Option<String> {
+    ["GITHUB_TOKEN", "GH_TOKEN"]
+        .iter()
+        .find_map(|name| std::env::var(name).ok().filter(|v| !v.trim().is_empty()))
+        .or_else(|| process::try_run_text(["gh", "auth", "token"]))
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty())
+}
+
+fn get(
+    client: &reqwest::blocking::Client,
+    token: Option<&str>,
+    url: &str,
+    accept: &str,
+) -> Result<reqwest::blocking::Response> {
+    let mut request = client.get(url).header("Accept", accept);
+    if let Some(token) = token {
         request = request.bearer_auth(token);
     }
     let response = request
         .send()
         .with_context(|| format!("Request to {url} failed"))?;
-    if !response.status().is_success() {
-        bail!("GET {url} returned {}", response.status());
+    let status = response.status();
+    if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(anyhow!("GET {url} returned {status}")).hint(
+            "eimer-cli is a private repo: run `gh auth login` or set GITHUB_TOKEN to a token with access to it.",
+        );
+    }
+    if !status.is_success() {
+        bail!("GET {url} returned {status}");
     }
     Ok(response)
 }
+
+const JSON: &str = "application/vnd.github+json";
+const BINARY: &str = "application/octet-stream";
 
 /// GitHub API base; `EIMER_GITHUB_API` overrides it (mirrors, tests).
 fn github_api() -> String {
@@ -107,11 +129,14 @@ fn parse_tag(tag: &str) -> Option<semver::Version> {
 /// Newest stable `eimer/v*` release, or the one matching `version`.
 fn find_release(
     client: &reqwest::blocking::Client,
+    token: Option<&str>,
     version: Option<&semver::Version>,
 ) -> Result<(semver::Version, Release)> {
     let releases: Vec<Release> = get(
         client,
+        token,
         &format!("{}/repos/{REPO}/releases?per_page=50", github_api()),
+        JSON,
     )?
     .json()?;
     select_release(releases, version).ok_or_else(|| match version {
@@ -147,8 +172,10 @@ fn upgrade(args: UpgradeArgs) -> Result<()> {
         .map(|v| semver::Version::parse(v.trim_start_matches('v')))
         .transpose()?;
     let client = client()?;
+    let token = github_token();
+    let token = token.as_deref();
     let (version, release) = ui::with_spinner("Checking for updates", || {
-        find_release(&client, wanted.as_ref())
+        find_release(&client, token, wanted.as_ref())
     })?;
 
     if args.check {
@@ -186,11 +213,11 @@ fn upgrade(args: UpgradeArgs) -> Result<()> {
         &format!("Downloading eimer {version}"),
         || -> Result<Vec<u8>> {
             let mut buf = Vec::new();
-            get(&client, &binary.browser_download_url)?.read_to_end(&mut buf)?;
+            get(&client, token, &binary.url, BINARY)?.read_to_end(&mut buf)?;
             Ok(buf)
         },
     )?;
-    let expected = get(&client, &checksum.browser_download_url)?.text()?;
+    let expected = get(&client, token, &checksum.url, BINARY)?.text()?;
     verify_checksum(&bytes, &expected)?;
 
     let exe = std::env::current_exe()?;

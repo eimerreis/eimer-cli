@@ -1,12 +1,14 @@
 # eimer installer for Windows.
 #
-#   irm https://raw.githubusercontent.com/eimerreis/eimer-cli/main/install.ps1 | iex
+#   gh api repos/eimerreis/eimer-cli/contents/install.ps1 -H 'Accept: application/vnd.github.raw' | iex
+#
+# The repo is private: the installer authenticates with GITHUB_TOKEN, or the GitHub CLI login.
 #
 # Environment variables:
 #   EIMER_VERSION      install a specific version (e.g. 0.2.0) instead of the latest
 #   EIMER_INSTALL_DIR  install directory (default: %LOCALAPPDATA%\eimer\bin)
 #   EIMER_NO_LINKS=1   do not create the task/pr/pipeline/release shims
-#   GITHUB_TOKEN       optional, avoids GitHub API rate limits
+#   GITHUB_TOKEN       token with access to the repo (default: `gh auth token`)
 
 $ErrorActionPreference = "Stop"
 
@@ -20,8 +22,11 @@ $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
 }
 $asset = "eimer-$arch-pc-windows-msvc.exe"
 
-$headers = @{ Accept = "application/vnd.github+json" }
-if ($env:GITHUB_TOKEN) { $headers.Authorization = "Bearer $($env:GITHUB_TOKEN)" }
+$token = $env:GITHUB_TOKEN
+if (-not $token -and (Get-Command gh -ErrorAction SilentlyContinue)) { $token = (gh auth token 2>$null) }
+if (-not $token) { throw "eimer-cli is a private repo: run 'gh auth login' or set GITHUB_TOKEN." }
+$headers = @{ Accept = "application/vnd.github+json"; Authorization = "Bearer $($token.Trim())" }
+$binaryHeaders = @{ Accept = "application/octet-stream"; Authorization = $headers.Authorization }
 
 $version = "$($env:EIMER_VERSION)".TrimStart("v")
 if (-not $version) {
@@ -36,14 +41,18 @@ if (-not $version) {
     $version = $version.ToString()
 }
 
-$base = "https://github.com/$Repo/releases/download/$TagPrefix$version"
+$tag = [uri]::EscapeDataString("$TagPrefix$version")
+$release = Invoke-RestMethod -Headers $headers "https://api.github.com/repos/$Repo/releases/tags/$tag"
+$binaryUrl = ($release.assets | Where-Object { $_.name -eq $asset }).url
+$checksumUrl = ($release.assets | Where-Object { $_.name -eq "$asset.sha256" }).url
+if (-not $binaryUrl -or -not $checksumUrl) { throw "Release $TagPrefix$version has no asset $asset." }
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid())
 New-Item -ItemType Directory -Path $tmp | Out-Null
 
 try {
     Write-Host "i Downloading eimer $version ($asset)"
-    Invoke-WebRequest -UseBasicParsing -Uri "$base/$asset" -OutFile "$tmp\eimer.exe"
-    Invoke-WebRequest -UseBasicParsing -Uri "$base/$asset.sha256" -OutFile "$tmp\eimer.sha256"
+    Invoke-WebRequest -UseBasicParsing -Headers $binaryHeaders -Uri $binaryUrl -OutFile "$tmp\eimer.exe"
+    Invoke-WebRequest -UseBasicParsing -Headers $binaryHeaders -Uri $checksumUrl -OutFile "$tmp\eimer.sha256"
 
     $expected = ((Get-Content "$tmp\eimer.sha256" -Raw).Trim() -split '\s+')[0].ToLower()
     $actual = (Get-FileHash -Algorithm SHA256 "$tmp\eimer.exe").Hash.ToLower()

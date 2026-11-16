@@ -1,21 +1,22 @@
 #!/bin/sh
 # eimer installer for Linux and macOS.
 #
-#   curl -fsSL https://raw.githubusercontent.com/eimerreis/eimer-cli/main/install.sh | sh
+#   gh api repos/eimerreis/eimer-cli/contents/install.sh -H 'Accept: application/vnd.github.raw' | sh
+#
+# The repo is private: the installer authenticates with GITHUB_TOKEN, or the GitHub CLI login.
 #
 # Environment variables:
 #   EIMER_VERSION      install a specific version (e.g. 0.2.0) instead of the latest
 #   EIMER_INSTALL_DIR  install directory (default: ~/.local/bin)
 #   EIMER_NO_LINKS=1   do not create the `task`, `pr`, `pipeline`, `release` symlinks
-#   GITHUB_TOKEN       optional, avoids GitHub API rate limits
-#   EIMER_GITHUB_URL / EIMER_GITHUB_API  override https://github.com / https://api.github.com (mirrors, tests)
+#   GITHUB_TOKEN       token with access to the repo (default: `gh auth token`)
+#   EIMER_GITHUB_API   override https://api.github.com (mirrors, tests)
 
 set -eu
 
 REPO="eimerreis/eimer-cli"
 TAG_PREFIX="eimer/v"
 INSTALL_DIR="${EIMER_INSTALL_DIR:-$HOME/.local/bin}"
-GITHUB_URL="${EIMER_GITHUB_URL:-https://github.com}"
 GITHUB_API="${EIMER_GITHUB_API:-https://api.github.com}"
 
 info() { printf 'i %s\n' "$*"; }
@@ -46,12 +47,29 @@ detect_target() {
   esac
 }
 
-github_get() {
+github_token() {
   if [ -n "${GITHUB_TOKEN:-}" ]; then
-    curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" "$1"
-  else
-    curl -fsSL -H "Accept: application/vnd.github+json" "$1"
+    printf '%s' "$GITHUB_TOKEN"
+  elif command -v gh >/dev/null 2>&1; then
+    gh auth token 2>/dev/null || true
   fi
+}
+
+# github_get <url> [accept] [curl args...]
+github_get() {
+  url=$1
+  accept=${2:-application/vnd.github+json}
+  shift
+  [ "$#" -gt 0 ] && shift
+  curl -fsSL -H "Authorization: Bearer ${TOKEN}" -H "Accept: ${accept}" "$@" "$url"
+}
+
+# URL of the release asset named $2 in the release JSON on stdin (pretty-printed by the API).
+asset_url() {
+  awk -v name="$2" '
+    /"url": *".*\/releases\/assets\/[0-9]+"/ { sub(/.*"url": *"/, ""); sub(/".*/, ""); url = $0 }
+    /"name": *"/ { n = $0; sub(/.*"name": *"/, "", n); sub(/".*/, "", n); if (n == name && url != "") { print url; exit } }
+  ' "$1"
 }
 
 latest_version() {
@@ -85,6 +103,8 @@ check_prerequisites() {
 
 main() {
   target=$(detect_target)
+  TOKEN=$(github_token)
+  [ -n "$TOKEN" ] || die "eimer-cli is a private repo: run 'gh auth login' or set GITHUB_TOKEN."
   version="${EIMER_VERSION:-}"
   version="${version#v}"
   if [ -z "$version" ]; then
@@ -93,13 +113,19 @@ main() {
   fi
 
   asset="eimer-${target}"
-  base="${GITHUB_URL}/${REPO}/releases/download/${TAG_PREFIX}${version}"
   tmp=$(mktemp -d)
   trap 'rm -rf "$tmp"' EXIT INT TERM
 
+  tag=$(printf '%s%s' "$TAG_PREFIX" "$version" | sed 's|/|%2F|g')
+  github_get "${GITHUB_API}/repos/${REPO}/releases/tags/${tag}" >"$tmp/release.json" ||
+    die "Release ${TAG_PREFIX}${version} not found in ${REPO}."
+  binary_url=$(asset_url "$tmp/release.json" "$asset")
+  checksum_url=$(asset_url "$tmp/release.json" "${asset}.sha256")
+  [ -n "$binary_url" ] && [ -n "$checksum_url" ] || die "Release ${TAG_PREFIX}${version} has no asset ${asset}."
+
   info "Downloading eimer ${version} (${target})"
-  curl -fsSL -o "$tmp/eimer" "${base}/${asset}" || die "Download failed: ${base}/${asset}"
-  curl -fsSL -o "$tmp/eimer.sha256" "${base}/${asset}.sha256" || die "Checksum download failed."
+  github_get "$binary_url" application/octet-stream -o "$tmp/eimer" || die "Download failed: ${asset}"
+  github_get "$checksum_url" application/octet-stream -o "$tmp/eimer.sha256" || die "Checksum download failed."
 
   expected=$(cut -d' ' -f1 <"$tmp/eimer.sha256")
   actual=$(sha256_of "$tmp/eimer")
