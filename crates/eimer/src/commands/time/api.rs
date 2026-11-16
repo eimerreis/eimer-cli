@@ -17,6 +17,17 @@ pub struct Project {
     pub project_number: Option<String>,
     #[serde(default)]
     pub is_completed: bool,
+    /// Customer id in the billing provider; resolves to a name via `customers()`.
+    #[serde(default)]
+    pub customer_id_billing_service: Option<String>,
+}
+
+/// A customer from the billing provider connected to time.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Customer {
+    pub id: String,
+    pub organization: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -31,6 +42,8 @@ pub struct TimeRecord {
     pub date: String,
     #[serde(default)]
     pub invoiced: bool,
+    #[serde(default)]
+    pub on_site: bool,
 }
 
 /// Budget progress from the dashboard overview, as the API reports it.
@@ -114,6 +127,17 @@ impl TimeClient {
             projects: Vec<Project>,
         }
         Ok(self.get::<Response>("projects.get", &[])?.projects)
+    }
+
+    /// Customers of the connected billing provider.
+    pub fn customers(&self) -> Result<Vec<Customer>> {
+        #[derive(Deserialize)]
+        struct Response {
+            customers: Vec<Customer>,
+        }
+        Ok(self
+            .get::<Response>("invoices.customers.get", &[])?
+            .customers)
     }
 
     /// Ids of projects that have time records not yet invoiced.

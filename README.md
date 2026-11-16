@@ -67,7 +67,10 @@ eimer time status                 # exit 1 when the PR has neither
 eimer time pending                # open entries and the last booking
 eimer time book [--dry-run]       # one record per project and day, then TIME.md
 eimer time report [--from --to] [--json]  # hours per project: window (default this week), unbilled, budget
+eimer time report --project <id|name> [--from --to] [-o file.pdf]  # time report PDF (Zeitbuchungen) for a client
 ```
+
+`eimer time report --project` writes the project's records in the window (default: all of them) as `time-report` YAML and renders it with `doc` from [freelance-ops](https://github.com/eimerreis/freelance-ops/tree/main/packages/documents): run `npm link -w @eimerreis/documents` there once, and have `typst` installed. The YAML stays next to the PDF, so you can fix wording and re-render with `doc <file>.yaml`. With `--json` it prints the data instead. The client name comes from the project's billing customer, falling back to the project name.
 
 Entry file:
 

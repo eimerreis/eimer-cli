@@ -11,6 +11,7 @@ mod api;
 mod auth;
 mod block;
 mod book;
+mod document;
 mod duration;
 mod hook;
 mod loopback;
@@ -62,7 +63,7 @@ enum TimeCommand {
     None(book::NoneArgs),
     /// Check the PR adds a time entry or has a Time line (exit 1 otherwise)
     Status(book::StatusArgs),
-    /// Hours per project: this week, not yet invoiced, and budget progress
+    /// Hours per project (this week, unbilled, budget); with --project the time report PDF
     Report(report::ReportArgs),
 }
 
