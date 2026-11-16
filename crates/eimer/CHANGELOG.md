@@ -1,5 +1,11 @@
 # eimer
 
+## 0.8.0
+
+### Minor Changes
+
+- a3b4251: `eimer time report --project <id|name>` renders the time report PDF (Zeitbuchungen) for a project via the `doc` CLI from freelance-ops.
+
 ## 0.7.0
 
 ### Minor Changes
