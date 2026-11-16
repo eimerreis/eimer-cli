@@ -1,5 +1,11 @@
 # eimer
 
+## 0.11.0
+
+### Minor Changes
+
+- ac987d0: `eimer doc render` and `eimer time report --project` install Typst themselves: on first use eimer downloads the pinned, checksum-verified Typst 0.15.1 to `~/.local/share/eimer/tools`, unless Typst 0.15+ is already on `PATH`.
+
 ## 0.10.0
 
 ### Minor Changes
